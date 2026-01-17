@@ -1,0 +1,57 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "Forge",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "fs": {
+        "all": true,
+        "scope": ["$HOME/**", "$DOCUMENT/**", "**"]
+      },
+      "path": { "all": true },
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "dialog": { "all": true },
+      "os": { "all": true }
+    },
+    "bundle": {
+      "active": true,
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png"
+      ],
+      "identifier": "com.forge.app",
+      "targets": "all",
+      "macOS": {
+        "minimumSystemVersion": "10.15"
+      }
+    },
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 800,
+        "width": 1280,
+        "minHeight": 700,
+        "minWidth": 1024,
+        "resizable": true,
+        "title": "Forge",
+        "visible": true,
+        "decorations": true
+      }
+    ]
+  }
+}
