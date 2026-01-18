@@ -12,6 +12,10 @@ tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
 tauri = { version = "1.5", features = [ "os-all", "shell-open", "dialog-all", "fs-all", "path-all"] }
+# Tauri plugin for persistent key-value storage
+tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
+# For user directories
+dirs = "5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # FTP/FTPS support
@@ -24,6 +28,20 @@ keyring = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 # TLS
 native-tls = "0.2"
+# Directory walking
+walkdir = "2.4"
+# HTTP client for web scraping
+reqwest = { version = "0.12", features = ["blocking"] }
+# URL parsing
+url = "2.5"
+# File system watcher
+notify = "6.1"
+# Date/time formatting
+chrono = "0.4"
+# HTML parsing for scraping
+scraper = "0.21"
+# CSS selector parsing
+select = "0.6"
 
 [features]
 default = ["custom-protocol"]

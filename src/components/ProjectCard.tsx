@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { Folder, Globe, CheckCircle, XCircle, RefreshCw, Loader } from 'lucide-react';
-import { Project, PROJECT_STATUS_CONFIG } from '../types';
+import { Folder, Globe, CheckCircle, XCircle, AlertCircle, RefreshCw, Loader, ChevronDown } from 'lucide-react';
+import { Project, PROJECT_STATUS_CONFIG, ProjectStatus } from '../types';
 import { projectService } from '../services/projectService';
 
 interface ProjectCardProps {
   project: Project;
   onClick: () => void;
   onSync?: (project: Project) => Promise<void>;
+  onStatusChange?: (project: Project, status: ProjectStatus) => Promise<void>;
 }
 
-export function ProjectCard({ project, onClick, onSync }: ProjectCardProps) {
+export function ProjectCard({ project, onClick, onSync, onStatusChange }: ProjectCardProps) {
   const [syncing, setSyncing] = useState(false);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const statusConfig = PROJECT_STATUS_CONFIG[project.status];
 
   // Use currentSite if available, fallback to production for legacy support
@@ -37,15 +39,38 @@ export function ProjectCard({ project, onClick, onSync }: ProjectCardProps) {
             <span className="card-subtitle">{project.name}</span>
           )}
         </div>
-        <span
-          className="status-badge"
-          style={{
-            background: `${statusConfig.color}20`,
-            color: statusConfig.color,
-          }}
-        >
-          {statusConfig.label}
-        </span>
+        <div className="status-dropdown-container" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="status-badge status-badge-clickable"
+            style={{
+              background: `${statusConfig.color}20`,
+              color: statusConfig.color,
+            }}
+            onClick={() => onStatusChange && setShowStatusDropdown(!showStatusDropdown)}
+          >
+            {statusConfig.label}
+            {onStatusChange && <ChevronDown size={10} />}
+          </button>
+          {showStatusDropdown && onStatusChange && (
+            <div className="status-dropdown-menu">
+              {(Object.entries(PROJECT_STATUS_CONFIG) as [ProjectStatus, { label: string; color: string }][]).map(
+                ([key, value]) => (
+                  <button
+                    key={key}
+                    className={`status-dropdown-item ${key === project.status ? 'active' : ''}`}
+                    onClick={async () => {
+                      setShowStatusDropdown(false);
+                      await onStatusChange(project, key);
+                    }}
+                  >
+                    <span className="status-dot" style={{ background: value.color }} />
+                    {value.label}
+                  </button>
+                )
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="card-divider" />
@@ -59,13 +84,20 @@ export function ProjectCard({ project, onClick, onSync }: ProjectCardProps) {
         )}
         <div className="info-row">
           {project.sftp.configured ? (
-            <>
-              <CheckCircle size={14} className="success" />
-              <span>FTP configuré</span>
-            </>
+            project.sftp.passwordAvailable ? (
+              <>
+                <CheckCircle size={14} className="ftp-status-configured" />
+                <span>FTP configuré</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle size={14} className="ftp-status-missing-password" />
+                <span>Mot de passe manquant</span>
+              </>
+            )
           ) : (
             <>
-              <XCircle size={14} className="muted" />
+              <XCircle size={14} className="ftp-status-not-configured" />
               <span>FTP non configuré</span>
             </>
           )}
@@ -95,7 +127,7 @@ export function ProjectCard({ project, onClick, onSync }: ProjectCardProps) {
             <Globe size={16} />
           </button>
         )}
-        {project.sftp.configured && onSync && (
+        {project.sftp.configured && project.sftp.passwordAvailable && onSync && (
           <button
             className="card-action sync-btn"
             onClick={handleSync}

@@ -1,301 +1,388 @@
-import { useState, useRef, useCallback } from 'react';
-import { ChevronRight, ChevronDown, Folder, FolderOpen } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragEndEvent,
+  DragOverEvent,
+} from '@dnd-kit/core';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, Lock } from 'lucide-react';
+import {
+  TreeNode,
+  cloneNodes,
+  findNodeById,
+  isAncestorOf,
+} from './TreeViewUtils';
 
-export interface TreeNode {
-  id: string;
-  name: string;
-  children?: TreeNode[];
-  isExpanded?: boolean;
-}
+// Re-export utilities for backward compatibility
+export { flatToTree, treeToFlat, generateNodeId } from './TreeViewUtils';
+export type { TreeNode } from './TreeViewUtils';
 
 export interface TreeViewProps {
   nodes: TreeNode[];
   onChange: (nodes: TreeNode[]) => void;
   onContextMenu?: (e: React.MouseEvent, node: TreeNode, path: number[]) => void;
+  lockedFolders?: string[];
+  /** Optional descriptions for folders, keyed by folder name */
+  descriptions?: Record<string, string>;
 }
 
-interface TreeItemProps {
-  node: TreeNode;
+// Flattened node representation for rendering
+interface FlatNode {
+  id: string;
+  name: string;
+  depth: number;
+  isExpanded: boolean;
+  isLocked: boolean;
+  hasChildren: boolean;
   path: number[];
-  level: number;
-  onToggle: (path: number[]) => void;
-  onContextMenu?: (e: React.MouseEvent, node: TreeNode, path: number[]) => void;
-  onDragStart: (e: React.DragEvent, path: number[]) => void;
-  onDragOver: (e: React.DragEvent, path: number[]) => void;
-  onDrop: (e: React.DragEvent, path: number[]) => void;
-  onDragEnd: () => void;
-  dragOverPath: number[] | null;
-  dragOverPosition: 'before' | 'inside' | 'after' | null;
 }
 
-function TreeItem({
+/**
+ * Flatten tree to a list for rendering (respecting expansion state)
+ */
+function flattenTree(nodes: TreeNode[], depth = 0, basePath: number[] = []): FlatNode[] {
+  return nodes.flatMap((node, index) => {
+    const path = [...basePath, index];
+    const isExpanded = node.isExpanded !== false;
+    const flat: FlatNode = {
+      id: node.id,
+      name: node.name,
+      depth,
+      isExpanded,
+      isLocked: node.isLocked || false,
+      hasChildren: (node.children?.length ?? 0) > 0,
+      path,
+    };
+    if (isExpanded && node.children && node.children.length > 0) {
+      return [flat, ...flattenTree(node.children, depth + 1, path)];
+    }
+    return [flat];
+  });
+}
+
+/**
+ * Move a node inside another node as a child
+ */
+function moveNodeInto(nodes: TreeNode[], sourceId: string, targetId: string): TreeNode[] | null {
+  const newNodes = cloneNodes(nodes);
+
+  // Find source
+  const sourceResult = findNodeById(newNodes, sourceId, newNodes);
+  if (!sourceResult) {
+    console.error('[TreeView] Source not found:', sourceId);
+    return null;
+  }
+
+  // Save a deep copy of the node we're moving
+  const movedNode = JSON.parse(JSON.stringify(sourceResult.node));
+
+  // Remove source from parent array
+  sourceResult.parent.splice(sourceResult.index, 1);
+
+  // Find target AFTER removing source (indices may have shifted)
+  const targetResult = findNodeById(newNodes, targetId, newNodes);
+  if (!targetResult) {
+    console.error('[TreeView] Target not found:', targetId);
+    return null;
+  }
+
+  // Add to target's children
+  if (!targetResult.node.children) {
+    targetResult.node.children = [];
+  }
+  targetResult.node.children.push(movedNode);
+  targetResult.node.isExpanded = true;
+
+  return newNodes;
+}
+
+// Helper to create droppable ID from node ID
+const toDroppableId = (nodeId: string) => `drop:${nodeId}`;
+// Helper to extract node ID from droppable ID
+const fromDroppableId = (droppableId: string) => droppableId.replace('drop:', '');
+
+// Draggable tree item component
+interface DraggableTreeItemProps {
+  node: FlatNode;
+  isOverTarget: boolean;
+  isDraggingSource: boolean;
+  lockedFolders: string[];
+  descriptions?: Record<string, string>;
+  onToggle: (id: string) => void;
+  onContextMenu?: (e: React.MouseEvent, node: FlatNode) => void;
+}
+
+function DraggableTreeItem({
   node,
-  path,
-  level,
+  isOverTarget,
+  isDraggingSource,
+  lockedFolders,
+  descriptions,
   onToggle,
   onContextMenu,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
-  dragOverPath,
-  dragOverPosition,
-}: TreeItemProps) {
-  const hasChildren = node.children && node.children.length > 0;
-  const isExpanded = node.isExpanded ?? true;
+}: DraggableTreeItemProps) {
+  const isLocked = node.isLocked || lockedFolders.includes(node.name);
+  const description = descriptions?.[node.name];
 
-  const isDragOver = dragOverPath &&
-    dragOverPath.length === path.length &&
-    dragOverPath.every((v, i) => v === path[i]);
+  // Draggable setup - uses node.id
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
+    id: node.id,
+    disabled: isLocked,
+  });
 
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onContextMenu?.(e, node, path);
-  };
+  // Droppable setup - uses different ID to avoid conflict
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: toDroppableId(node.id),
+    disabled: isLocked,
+  });
+
+  // Combine refs
+  const setNodeRef = useCallback((el: HTMLElement | null) => {
+    setDragRef(el);
+    setDropRef(el);
+  }, [setDragRef, setDropRef]);
+
+  const showDropIndicator = (isOverTarget || isOver) && !isDraggingSource && !isDragging;
+
+  const className = [
+    'tree-item',
+    showDropIndicator ? 'drag-over drag-over-inside' : '',
+    isDraggingSource || isDragging ? 'dragging' : '',
+    isLocked ? 'locked' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <div className="tree-item-container">
+    <div
+      ref={setNodeRef}
+      className={className}
+      style={{
+        opacity: isDraggingSource || isDragging ? 0.4 : 1,
+        cursor: isLocked ? 'not-allowed' : 'grab',
+      }}
+      {...attributes}
+      {...(isLocked ? {} : listeners)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu?.(e, node);
+      }}
+    >
       <div
-        className={`tree-item ${isDragOver ? `drag-over drag-over-${dragOverPosition}` : ''}`}
-        style={{ paddingLeft: `${level * 20 + 8}px` }}
-        draggable
-        onDragStart={(e) => onDragStart(e, path)}
-        onDragOver={(e) => onDragOver(e, path)}
-        onDrop={(e) => onDrop(e, path)}
-        onDragEnd={onDragEnd}
-        onContextMenu={handleContextMenu}
+        style={{
+          paddingLeft: `${node.depth * 20 + 8}px`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+        }}
       >
         <button
           className="tree-toggle"
-          onClick={() => onToggle(path)}
-          style={{ visibility: hasChildren ? 'visible' : 'hidden' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle(node.id);
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{ visibility: node.hasChildren ? 'visible' : 'hidden' }}
         >
-          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {node.isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
         <span className="tree-icon">
-          {hasChildren && isExpanded ? (
+          {isLocked ? (
+            <Lock size={16} />
+          ) : node.isExpanded && node.hasChildren ? (
             <FolderOpen size={16} />
           ) : (
             <Folder size={16} />
           )}
         </span>
         <span className="tree-label">{node.name}</span>
+        {description && (
+          <span className="tree-description">{description}</span>
+        )}
+        {isLocked && <span className="tree-locked-badge">verrouille</span>}
       </div>
-
-      {hasChildren && isExpanded && (
-        <div className="tree-children">
-          {node.children!.map((child, index) => (
-            <TreeItem
-              key={child.id}
-              node={child}
-              path={[...path, index]}
-              level={level + 1}
-              onToggle={onToggle}
-              onContextMenu={onContextMenu}
-              onDragStart={onDragStart}
-              onDragOver={onDragOver}
-              onDrop={onDrop}
-              onDragEnd={onDragEnd}
-              dragOverPath={dragOverPath}
-              dragOverPosition={dragOverPosition}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-export function TreeView({ nodes, onChange, onContextMenu }: TreeViewProps) {
-  const [dragOverPath, setDragOverPath] = useState<number[] | null>(null);
-  const [dragOverPosition, setDragOverPosition] = useState<'before' | 'inside' | 'after' | null>(null);
-  const dragSourcePath = useRef<number[] | null>(null);
+export function TreeView({
+  nodes,
+  onChange,
+  onContextMenu,
+  lockedFolders = [],
+  descriptions,
+}: TreeViewProps) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
-  const toggleNode = useCallback((path: number[]) => {
-    const newNodes = JSON.parse(JSON.stringify(nodes)) as TreeNode[];
-    let current = newNodes;
-    for (let i = 0; i < path.length - 1; i++) {
-      current = current[path[i]].children!;
+  // Flatten the tree for rendering
+  const flatNodes = useMemo(() => flattenTree(nodes), [nodes]);
+
+  // Find the active node for the drag overlay
+  const activeNode = useMemo(
+    () => flatNodes.find((n) => n.id === activeId) || null,
+    [flatNodes, activeId]
+  );
+
+  // Configure sensors with activation constraint
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement required before drag starts
+      },
+    })
+  );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const id = event.active.id as string;
+    const node = flatNodes.find((n) => n.id === id);
+
+    if (!node) return;
+
+    // Don't start drag on locked items
+    if (node.isLocked || lockedFolders.includes(node.name)) {
+      return;
     }
-    const node = current[path[path.length - 1]];
-    node.isExpanded = !(node.isExpanded ?? true);
-    onChange(newNodes);
+
+    setActiveId(id);
+  }, [flatNodes, lockedFolders]);
+
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    if (!event.over) {
+      setOverId(null);
+      return;
+    }
+
+    const rawId = event.over.id as string;
+    // Extract node ID from droppable ID (format: "drop:nodeId")
+    const nodeId = rawId.startsWith('drop:') ? fromDroppableId(rawId) : rawId;
+    setOverId(nodeId);
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+
+    // Get source ID directly from the event (more reliable than state)
+    const sourceId = active.id as string;
+
+    // Clear state
+    setActiveId(null);
+    setOverId(null);
+
+    if (!over) return;
+
+    // Extract target node ID from droppable ID
+    const rawTargetId = over.id as string;
+    const targetId = rawTargetId.startsWith('drop:') ? fromDroppableId(rawTargetId) : rawTargetId;
+
+    // Don't drop on self
+    if (sourceId === targetId) return;
+
+    // Find nodes
+    const sourceNode = flatNodes.find((n) => n.id === sourceId);
+    const targetNode = flatNodes.find((n) => n.id === targetId);
+
+    if (!sourceNode || !targetNode) {
+      console.error('[TreeView] Node not found:', { sourceId, targetId });
+      return;
+    }
+
+    // Validate: can't drop on locked folders
+    if (targetNode.isLocked || lockedFolders.includes(targetNode.name)) {
+      return;
+    }
+
+    // Validate: can't drop on own descendant
+    if (isAncestorOf(nodes, sourceId, targetId)) {
+      return;
+    }
+
+    // Move the node
+    const newNodes = moveNodeInto(nodes, sourceId, targetId);
+    if (newNodes) {
+      onChange(newNodes);
+    }
+  }, [flatNodes, lockedFolders, nodes, onChange]);
+
+  const handleDragCancel = useCallback(() => {
+    setActiveId(null);
+    setOverId(null);
+  }, []);
+
+  const handleToggle = useCallback((id: string) => {
+    const newNodes = cloneNodes(nodes);
+    const result = findNodeById(newNodes, id, newNodes);
+    if (result) {
+      result.node.isExpanded = result.node.isExpanded === false;
+      onChange(newNodes);
+    }
   }, [nodes, onChange]);
 
-  const handleDragStart = useCallback((e: React.DragEvent, path: number[]) => {
-    dragSourcePath.current = path;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', JSON.stringify(path));
-  }, []);
+  const handleContextMenu = useCallback((e: React.MouseEvent, flatNode: FlatNode) => {
+    if (!onContextMenu) return;
 
-  const handleDragOver = useCallback((e: React.DragEvent, path: number[]) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!dragSourcePath.current) return;
-
-    // Don't allow dropping on itself
-    const isSameNode = dragSourcePath.current.length === path.length &&
-      dragSourcePath.current.every((v, i) => v === path[i]);
-    if (isSameNode) return;
-
-    // Don't allow dropping on descendant
-    const isDescendant = dragSourcePath.current.length < path.length &&
-      dragSourcePath.current.every((v, i) => v === path[i]);
-    if (isDescendant) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const height = rect.height;
-
-    let position: 'before' | 'inside' | 'after';
-    if (y < height * 0.25) {
-      position = 'before';
-    } else if (y > height * 0.75) {
-      position = 'after';
-    } else {
-      position = 'inside';
+    // Find the original TreeNode
+    const result = findNodeById(nodes, flatNode.id, nodes);
+    if (result) {
+      onContextMenu(e, result.node, flatNode.path);
     }
-
-    setDragOverPath(path);
-    setDragOverPosition(position);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent, targetPath: number[]) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const sourcePath = dragSourcePath.current;
-    if (!sourcePath || !dragOverPosition) return;
-
-    // Get node from source
-    const newNodes = JSON.parse(JSON.stringify(nodes)) as TreeNode[];
-
-    // Navigate to source parent and remove node
-    let sourceParent = newNodes;
-    for (let i = 0; i < sourcePath.length - 1; i++) {
-      sourceParent = sourceParent[sourcePath[i]].children!;
-    }
-    const [movedNode] = sourceParent.splice(sourcePath[sourcePath.length - 1], 1);
-
-    // Adjust target path if source was before target in same parent
-    const adjustedTargetPath = [...targetPath];
-    if (sourcePath.length === targetPath.length) {
-      const sameParent = sourcePath.slice(0, -1).every((v, i) => v === targetPath[i]);
-      if (sameParent && sourcePath[sourcePath.length - 1] < targetPath[targetPath.length - 1]) {
-        adjustedTargetPath[adjustedTargetPath.length - 1]--;
-      }
-    }
-
-    // Navigate to target
-    let targetParent = newNodes;
-    for (let i = 0; i < adjustedTargetPath.length - 1; i++) {
-      targetParent = targetParent[adjustedTargetPath[i]].children!;
-    }
-    const targetIndex = adjustedTargetPath[adjustedTargetPath.length - 1];
-    const targetNode = targetParent[targetIndex];
-
-    if (dragOverPosition === 'inside') {
-      // Add as child
-      if (!targetNode.children) {
-        targetNode.children = [];
-      }
-      targetNode.children.push(movedNode);
-      targetNode.isExpanded = true;
-    } else if (dragOverPosition === 'before') {
-      targetParent.splice(targetIndex, 0, movedNode);
-    } else {
-      targetParent.splice(targetIndex + 1, 0, movedNode);
-    }
-
-    onChange(newNodes);
-    setDragOverPath(null);
-    setDragOverPosition(null);
-    dragSourcePath.current = null;
-  }, [nodes, onChange, dragOverPosition]);
-
-  const handleDragEnd = useCallback(() => {
-    setDragOverPath(null);
-    setDragOverPosition(null);
-    dragSourcePath.current = null;
-  }, []);
+  }, [nodes, onContextMenu]);
 
   return (
-    <div className="tree-view">
-      {nodes.map((node, index) => (
-        <TreeItem
-          key={node.id}
-          node={node}
-          path={[index]}
-          level={0}
-          onToggle={toggleNode}
-          onContextMenu={onContextMenu}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          onDragEnd={handleDragEnd}
-          dragOverPath={dragOverPath}
-          dragOverPosition={dragOverPosition}
-        />
-      ))}
-    </div>
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div className="tree-view">
+        {flatNodes.map((node) => (
+          <DraggableTreeItem
+            key={node.id}
+            node={node}
+            isOverTarget={overId === node.id && activeId !== node.id}
+            isDraggingSource={activeId === node.id}
+            lockedFolders={lockedFolders}
+            descriptions={descriptions}
+            onToggle={handleToggle}
+            onContextMenu={handleContextMenu}
+          />
+        ))}
+      </div>
+      <DragOverlay dropAnimation={null}>
+        {activeNode && (
+          <div
+            className="tree-item"
+            style={{
+              padding: '6px 12px',
+              background: 'var(--bg-secondary)',
+              borderRadius: 4,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              border: '1px solid var(--accent-blue)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: 'grabbing',
+            }}
+          >
+            <Folder size={16} style={{ color: 'var(--accent-yellow)' }} />
+            <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{activeNode.name}</span>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
-}
-
-// Utility functions for converting between flat list and tree structure
-export function flatToTree(folders: string[]): TreeNode[] {
-  const root: TreeNode[] = [];
-  const nodeMap = new Map<string, TreeNode>();
-
-  // Sort folders to ensure parents come before children
-  const sortedFolders = [...folders].sort();
-
-  for (const folder of sortedFolders) {
-    const parts = folder.split('/');
-    let currentPath = '';
-    let currentLevel = root;
-
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      const newPath = currentPath ? `${currentPath}/${part}` : part;
-
-      let existingNode = nodeMap.get(newPath);
-      if (!existingNode) {
-        existingNode = {
-          id: newPath,
-          name: part,
-          children: [],
-          isExpanded: true,
-        };
-        nodeMap.set(newPath, existingNode);
-        currentLevel.push(existingNode);
-      }
-
-      currentLevel = existingNode.children!;
-      currentPath = newPath;
-    }
-  }
-
-  return root;
-}
-
-export function treeToFlat(nodes: TreeNode[], parentPath = ''): string[] {
-  const result: string[] = [];
-
-  for (const node of nodes) {
-    const currentPath = parentPath ? `${parentPath}/${node.name}` : node.name;
-    result.push(currentPath);
-
-    if (node.children && node.children.length > 0) {
-      result.push(...treeToFlat(node.children, currentPath));
-    }
-  }
-
-  return result;
-}
-
-// Generate a unique ID for new nodes
-export function generateNodeId(): string {
-  return `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }

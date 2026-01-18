@@ -1,8 +1,10 @@
 import { invoke } from '@tauri-apps/api/tauri';
-import { readDir, readTextFile, writeTextFile, createDir } from '@tauri-apps/api/fs';
+import { readDir, readTextFile, writeTextFile, createDir, removeDir } from '@tauri-apps/api/fs';
 import { join } from '@tauri-apps/api/path';
-import { Project } from '../types';
+import { open } from '@tauri-apps/api/shell';
+import { Project, DEFAULT_FOLDER_STRUCTURE, migrateProjectStatus } from '../types';
 import { ProjectFormData } from '../components/ProjectForm';
+import { configStore } from './configStore';
 
 export const projectService = {
   async scanProjects(workspacePath: string): Promise<Project[]> {
@@ -30,34 +32,57 @@ export const projectService = {
   },
 
   async loadProject(path: string, name: string): Promise<Project | null> {
-    const configPath = await join(path, '.project-config.json');
-
-    // Charger la config si elle existe
+    // 1. Try loading from the new store (atomic storage)
     try {
+      const storedConfig = await configStore.getProjectConfig<Omit<Project, 'path' | 'id'>>(path);
+      if (storedConfig) {
+        return {
+          ...storedConfig,
+          path,
+          id: path,
+          status: migrateProjectStatus(storedConfig.status),
+          referenceWebsites: storedConfig.referenceWebsites || [],
+          urls: {
+            ...storedConfig.urls,
+            currentSite: storedConfig.urls?.currentSite || storedConfig.urls?.production,
+          },
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to load from store, trying legacy file:', e);
+    }
+
+    // 2. Migration: try loading from legacy .project-config.json file
+    try {
+      const configPath = await join(path, '.project-config.json');
       const content = await readTextFile(configPath);
-      const config = JSON.parse(content);
-      // Ensure referenceWebsites is always an array (backward compatibility)
+      const legacyConfig = JSON.parse(content);
+
+      // Migrate to new store
+      const { path: _, id: __, ...configToStore } = { ...legacyConfig, path, id: path };
+      await configStore.saveProjectConfig(path, configToStore);
+      console.log('Migrated project config to store:', name);
+
       return {
-        ...config,
+        ...legacyConfig,
         path,
         id: path,
-        referenceWebsites: config.referenceWebsites || [],
-        // Migrate production to currentSite if not present
+        status: migrateProjectStatus(legacyConfig.status),
+        referenceWebsites: legacyConfig.referenceWebsites || [],
         urls: {
-          ...config.urls,
-          currentSite: config.urls?.currentSite || config.urls?.production,
+          ...legacyConfig.urls,
+          currentSite: legacyConfig.urls?.currentSite || legacyConfig.urls?.production,
         },
       };
     } catch {
-      // Pas de config, créer un projet basique
-      // Tout dossier est considéré comme un projet potentiel
+      // 3. No config found - create a new default project
       return {
         id: path,
         name,
         path,
         created: new Date().toISOString(),
         updated: new Date().toISOString(),
-        status: 'active',
+        status: 'prospect',
         urls: {},
         sftp: { configured: false },
         scraping: { completed: false },
@@ -76,28 +101,8 @@ export const projectService = {
   ): Promise<Project> {
     const projectPath = await join(workspacePath, name);
 
-    // Utiliser la structure personnalisée ou la structure par défaut
-    const folders = folderStructure || [
-      '01-sources',
-      'psd',
-      'ai',
-      'figma',
-      'fonts',
-      '02-docs',
-      '03-assets',
-      'images',
-      'videos',
-      'icons',
-      'logos',
-      '04-references',
-      'screenshots',
-      'competitors',
-      'scraped',
-      'www/css',
-      'www/js',
-      'www/assets',
-      'www/pages',
-    ];
+    // Utiliser la structure personnalisee ou la structure par defaut
+    const folders = folderStructure || DEFAULT_FOLDER_STRUCTURE;
 
     for (const folder of folders) {
       await createDir(await join(projectPath, folder), { recursive: true });
@@ -109,7 +114,7 @@ export const projectService = {
       path: projectPath,
       created: new Date().toISOString(),
       updated: new Date().toISOString(),
-      status: 'active',
+      status: 'prospect',
       urls: sourceURL ? { production: sourceURL, currentSite: sourceURL } : {},
       sftp: { configured: false },
       scraping: sourceURL ? { completed: false, sourceUrl: sourceURL } : { completed: false },
@@ -132,31 +137,14 @@ export const projectService = {
     const projectPath = await join(workspacePath, data.name);
 
     // Use custom structure or default
-    const folders = folderStructure || [
-      '01-sources',
-      'psd',
-      'ai',
-      'figma',
-      'fonts',
-      '02-docs',
-      '03-assets',
-      'images',
-      'videos',
-      'icons',
-      'logos',
-      '04-references',
-      'screenshots',
-      'competitors',
-      'scraped',
-      `${data.localPath || 'www'}/css`,
-      `${data.localPath || 'www'}/js`,
-      `${data.localPath || 'www'}/assets`,
-      `${data.localPath || 'www'}/pages`,
-    ];
+    const folders = folderStructure || DEFAULT_FOLDER_STRUCTURE;
 
+    // Step 1: Create folder structure
+    console.log('[projectService] Creating folder structure for:', data.name);
     for (const folder of folders) {
       await createDir(await join(projectPath, folder), { recursive: true });
     }
+    console.log('[projectService] Folders created successfully');
 
     const hasSftp = data.sftp.host && data.sftp.username;
 
@@ -167,7 +155,7 @@ export const projectService = {
       client: data.client || undefined,
       created: new Date().toISOString(),
       updated: new Date().toISOString(),
-      status: 'active',
+      status: 'prospect',
       urls: {
         currentSite: data.currentSiteUrl || undefined,
         testUrl: data.testUrl || undefined,
@@ -195,16 +183,28 @@ export const projectService = {
       referenceWebsites: data.referenceWebsites || [],
     };
 
+    // Step 2: Save project config
+    console.log('[projectService] Saving project config...');
     await this.saveProject(project);
-    await this.createTemplateFilesWithPath(project, data.localPath || 'www');
+    console.log('[projectService] Project config saved');
+
+    // Step 3: Create template files (non-blocking)
+    this.createTemplateFilesWithPath(project, data.localPath || 'www')
+      .then(() => console.log('[projectService] Template files created'))
+      .catch((e) => console.warn('[projectService] Template files failed:', e));
 
     return project;
   },
 
   async createTemplateFilesWithPath(project: Project, localPath: string): Promise<void> {
-    await writeTextFile(
-      await join(project.path, `${localPath}/index.html`),
-      `<!DOCTYPE html>
+    try {
+      // Ensure subdirectories exist before writing files
+      await createDir(await join(project.path, localPath, 'css'), { recursive: true });
+      await createDir(await join(project.path, localPath, 'js'), { recursive: true });
+
+      await writeTextFile(
+        await join(project.path, `${localPath}/index.html`),
+        `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -217,36 +217,39 @@ export const projectService = {
   <script src="js/main.js"></script>
 </body>
 </html>`
-    );
+      );
 
-    await writeTextFile(
-      await join(project.path, `${localPath}/css/style.css`),
-      `*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      await writeTextFile(
+        await join(project.path, `${localPath}/css/style.css`),
+        `*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; line-height: 1.6; }`
-    );
+      );
 
-    await writeTextFile(
-      await join(project.path, `${localPath}/js/main.js`),
-      `document.addEventListener('DOMContentLoaded', () => {
+      await writeTextFile(
+        await join(project.path, `${localPath}/js/main.js`),
+        `document.addEventListener('DOMContentLoaded', () => {
   console.log('${project.name} initialized');
 });`
-    );
+      );
 
-    await writeTextFile(
-      await join(project.path, 'README.md'),
-      `# ${project.name}\n\n*Projet créé avec Forge*`
-    );
+      await writeTextFile(
+        await join(project.path, 'README.md'),
+        `# ${project.name}\n\n*Projet créé avec Forge*`
+      );
 
-    await writeTextFile(
-      await join(project.path, '.gitignore'),
-      `.DS_Store\n.ftp-config.json\ncredentials.md\nnode_modules/\n.env`
-    );
+      await writeTextFile(
+        await join(project.path, '.gitignore'),
+        `.DS_Store\n.ftp-config.json\ncredentials.md\nnode_modules/\n.env`
+      );
+    } catch (error) {
+      // Template files are not critical - log but don't fail
+      console.warn('Could not create some template files:', error);
+    }
   },
 
   async saveProject(project: Project): Promise<void> {
-    const configPath = await join(project.path, '.project-config.json');
     const { path: _, id: __, ...config } = project;
-    await writeTextFile(configPath, JSON.stringify(config, null, 2));
+    await configStore.saveProjectConfig(project.id, config);
   },
 
   async createTemplateFiles(project: Project): Promise<void> {
@@ -291,11 +294,25 @@ body { font-family: system-ui, sans-serif; line-height: 1.6; }`
     );
   },
 
+  async deleteProject(projectPath: string): Promise<void> {
+    await removeDir(projectPath, { recursive: true });
+  },
+
   async openInFinder(path: string): Promise<void> {
     await invoke('open_in_finder', { path });
   },
 
-  openInBrowser(url: string): void {
-    window.open(url, '_blank');
+  async openInBrowser(url: string): Promise<void> {
+    console.log('[projectService] Opening URL in browser:', url);
+    if (!url) {
+      console.error('[projectService] openInBrowser: URL is empty');
+      return;
+    }
+    try {
+      await open(url);
+      console.log('[projectService] URL opened successfully');
+    } catch (err) {
+      console.error('[projectService] Failed to open URL:', err);
+    }
   },
 };
