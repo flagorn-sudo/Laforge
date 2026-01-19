@@ -70,9 +70,9 @@ fn create_tray_menu(recent_projects: Vec<RecentProject>) -> SystemTrayMenu {
 /// Handle system tray events
 pub fn handle_tray_event(app: &AppHandle, event: SystemTrayEvent) {
     match event {
-        SystemTrayEvent::LeftClick { .. } => {
-            // Do nothing - just show the menu (handled by menuOnLeftClick in config)
-            // User can click "Afficher La Forge" to show the window
+        SystemTrayEvent::LeftClick { .. } | SystemTrayEvent::DoubleClick { .. } => {
+            // Do nothing on click - only show the menu
+            // Window is shown only via "Afficher La Forge" menu item
         }
         SystemTrayEvent::MenuItemClick { id, .. } => {
             match id.as_str() {
