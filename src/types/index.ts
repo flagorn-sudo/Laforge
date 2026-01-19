@@ -49,6 +49,7 @@ export interface SFTPInfo {
   protocol?: FTPProtocol;
   acceptInvalidCerts?: boolean;
   passwordAvailable?: boolean;
+  encryptedPassword?: string;  // AES-256 encrypted password stored inline
 }
 
 export interface ScrapingStats {

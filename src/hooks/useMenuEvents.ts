@@ -8,6 +8,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
 export interface MenuEventHandlers {
   onAbout?: () => void;
+  onCheckUpdates?: () => void;
   onPreferences?: () => void;
   onNewProject?: () => void;
   onRefresh?: () => void;
@@ -28,6 +29,11 @@ export function useMenuEvents(handlers: MenuEventHandlers): void {
     const setupListeners = async () => {
       if (handlers.onAbout) {
         const unlisten = await listen('menu-about', handlers.onAbout);
+        unlisteners.push(unlisten);
+      }
+
+      if (handlers.onCheckUpdates) {
+        const unlisten = await listen('menu-check-updates', handlers.onCheckUpdates);
         unlisteners.push(unlisten);
       }
 
@@ -74,6 +80,7 @@ export function useMenuEvents(handlers: MenuEventHandlers): void {
     };
   }, [
     handlers.onAbout,
+    handlers.onCheckUpdates,
     handlers.onPreferences,
     handlers.onNewProject,
     handlers.onRefresh,

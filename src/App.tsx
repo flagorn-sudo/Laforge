@@ -13,7 +13,11 @@ import { syncService } from './services/syncService';
 import { projectService } from './services/projectService';
 import { scrapingService } from './services/scrapingService';
 import { geminiService } from './services/geminiService';
+import { configStore } from './services/configStore';
 import { Project } from './types';
+import { checkUpdate, installUpdate } from '@tauri-apps/api/updater';
+import { relaunch } from '@tauri-apps/api/process';
+import { ask } from '@tauri-apps/api/dialog';
 import './styles/globals.css';
 
 function LoadingScreen() {
@@ -57,9 +61,16 @@ export function App() {
     addNotification,
   } = useUIStore();
 
-  // Load settings from Tauri store on mount
+  // Load settings from Tauri store on mount and run migrations
   useEffect(() => {
     loadSettings();
+
+    // Run credential migration (legacy XOR -> AES-256)
+    configStore.migrateCredentials().then((result) => {
+      if (result.migrated > 0) {
+        console.log(`[App] Migrated ${result.migrated} credentials to AES-256`);
+      }
+    });
   }, [loadSettings]);
 
   // Fetch projects on mount and when workspace changes
@@ -136,6 +147,28 @@ export function App() {
     onAbout: useCallback(() => {
       openModal('about');
     }, [openModal]),
+    onCheckUpdates: useCallback(async () => {
+      try {
+        addNotification('info', 'Vérification des mises à jour...');
+        const { shouldUpdate, manifest } = await checkUpdate();
+        if (shouldUpdate && manifest) {
+          const confirmed = await ask(
+            `Version ${manifest.version} disponible. Installer maintenant ?`,
+            { title: 'Mise à jour disponible', type: 'info' }
+          );
+          if (confirmed) {
+            addNotification('info', 'Installation de la mise à jour...');
+            await installUpdate();
+            await relaunch();
+          }
+        } else {
+          addNotification('success', 'Vous avez la dernière version.');
+        }
+      } catch (e) {
+        console.error('Update check failed:', e);
+        addNotification('error', 'Impossible de vérifier les mises à jour.');
+      }
+    }, [addNotification]),
     onPreferences: useCallback(() => {
       openModal('settings');
     }, [openModal]),

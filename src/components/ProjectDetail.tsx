@@ -33,7 +33,7 @@ import { Button, Card, Modal, Tabs } from './ui';
 import { FTPSection, ProjectFileTree, SyncProgress } from '../features/projects/components';
 import { ScrapingPanel } from '../features/scraping/components';
 import { useFTPConnection } from '../features/projects/hooks/useFTPConnection';
-import { useUIStore, useSyncStore } from '../stores';
+import { useUIStore, useSyncStore, useProjectStore } from '../stores';
 
 /**
  * Convert hex color to RGB
@@ -194,10 +194,23 @@ export function ProjectDetail({
 
   const { addNotification } = useUIStore();
 
+  // Project store for editing protection
+  const { startEditing, stopEditing } = useProjectStore();
+
   // Sync store for progress tracking
   const { getSyncState, startSync, resetSync } = useSyncStore();
   const syncState = getSyncState(project.id);
   const syncing = syncState.stage !== 'idle' && syncState.stage !== 'complete' && syncState.stage !== 'error';
+
+  // Editing protection: Block fetchProjects while editing this project
+  useEffect(() => {
+    if (project) {
+      startEditing(project.id);
+    }
+    return () => {
+      stopEditing();
+    };
+  }, [project?.id, startEditing, stopEditing]);
 
   // Sync form state when project prop changes - single coherent useEffect
   useEffect(() => {

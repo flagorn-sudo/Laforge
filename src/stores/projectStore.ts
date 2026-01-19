@@ -10,11 +10,19 @@ interface ProjectState {
   loading: boolean;
   error: string | null;
 
+  // Editing protection flags
+  isEditing: boolean;
+  editingProjectId: string | null;
+
   // Actions
   setProjects: (projects: Project[]) => void;
   selectProject: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+
+  // Editing protection actions
+  startEditing: (projectId: string) => void;
+  stopEditing: () => void;
 
   // Async actions
   fetchProjects: (workspacePath: string) => Promise<void>;
@@ -40,14 +48,29 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loading: false,
   error: null,
 
+  // Editing protection flags
+  isEditing: false,
+  editingProjectId: null,
+
   setProjects: (projects) => set({ projects }),
   selectProject: (id) => set({ selectedProjectId: id }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
 
+  // Editing protection actions
+  startEditing: (projectId: string) => set({ isEditing: true, editingProjectId: projectId }),
+  stopEditing: () => set({ isEditing: false, editingProjectId: null }),
+
   fetchProjects: async (workspacePath: string) => {
     if (!workspacePath) {
       set({ projects: [], loading: false });
+      return;
+    }
+
+    // Block fetch if editing is in progress to prevent overwriting unsaved changes
+    const { isEditing, editingProjectId } = get();
+    if (isEditing) {
+      console.warn('[ProjectStore] Fetch blocked: editing in progress for project', editingProjectId);
       return;
     }
 

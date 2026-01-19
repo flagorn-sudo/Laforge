@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/tauri';
-import { SFTPConfig, FileDiff } from '../types';
+import { SFTPConfig, FileDiff, Project } from '../types';
 import { configStore } from './configStore';
 
 // Create a safe key for credential storage
@@ -75,6 +75,28 @@ export const sftpService = {
       // Not finding a password is expected for projects without saved credentials
       return null;
     }
+  },
+
+  /**
+   * Get credentials for a project, checking inline encrypted password first,
+   * then falling back to credential store
+   */
+  async getCredentialsForProject(project: Project): Promise<string | null> {
+    // 1. Try inline encrypted password first (new format)
+    if (project.sftp.encryptedPassword) {
+      try {
+        const decrypted = configStore.decrypt(project.sftp.encryptedPassword);
+        if (decrypted) {
+          console.log('[sftpService] getCredentialsForProject: found inline encrypted password');
+          return decrypted;
+        }
+      } catch (e) {
+        console.warn('[sftpService] Failed to decrypt inline password:', e);
+      }
+    }
+
+    // 2. Fall back to credential store
+    return this.getCredentials(project.id);
   },
 
   async hasCredentials(projectId: string): Promise<boolean> {

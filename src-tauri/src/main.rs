@@ -1207,6 +1207,8 @@ fn create_menu() -> Menu {
         Menu::new()
             .add_item(CustomMenuItem::new("about", "À propos de La Forge"))
             .add_native_item(MenuItem::Separator)
+            .add_item(CustomMenuItem::new("check_updates", "Vérifier les mises à jour..."))
+            .add_native_item(MenuItem::Separator)
             .add_item(
                 CustomMenuItem::new("preferences", "Préférences...")
                     .accelerator("CmdOrCtrl+,"),
@@ -1317,6 +1319,10 @@ fn handle_menu_event(event: WindowMenuEvent) {
         "about" => {
             // Emit event to frontend to show about dialog
             let _ = window.emit("menu-about", ());
+        }
+        "check_updates" => {
+            // Emit event to frontend to check for updates
+            let _ = window.emit("menu-check-updates", ());
         }
         "preferences" => {
             // Navigate to settings

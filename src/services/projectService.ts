@@ -36,6 +36,9 @@ export const projectService = {
     try {
       const storedConfig = await configStore.getProjectConfig<Omit<Project, 'path' | 'id'>>(path);
       if (storedConfig) {
+        // Check if we have an encrypted password inline
+        const hasInlinePassword = storedConfig.sftp?.encryptedPassword;
+
         return {
           ...storedConfig,
           path,
@@ -45,6 +48,11 @@ export const projectService = {
           urls: {
             ...storedConfig.urls,
             currentSite: storedConfig.urls?.currentSite || storedConfig.urls?.production,
+          },
+          sftp: {
+            ...storedConfig.sftp,
+            // Mark password as available if we have an encrypted password inline
+            passwordAvailable: hasInlinePassword ? true : storedConfig.sftp?.passwordAvailable,
           },
         };
       }
@@ -247,8 +255,27 @@ body { font-family: system-ui, sans-serif; line-height: 1.6; }`
     }
   },
 
-  async saveProject(project: Project): Promise<void> {
+  /**
+   * Save project with atomic operation
+   * Includes backup creation, verification, and optional password encryption
+   */
+  async saveProject(project: Project, password?: string): Promise<void> {
     const { path: _, id: __, ...config } = project;
+
+    // If a password is provided, encrypt it and store inline
+    if (password && project.sftp.configured) {
+      config.sftp = {
+        ...config.sftp,
+        encryptedPassword: configStore.encrypt(password),
+        passwordAvailable: true,
+      };
+    }
+
+    // configStore.saveProjectConfig already handles:
+    // 1. Backup creation
+    // 2. Atomic save
+    // 3. Verification
+    // 4. Rollback on failure
     await configStore.saveProjectConfig(project.id, config);
   },
 
