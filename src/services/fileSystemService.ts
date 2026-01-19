@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/tauri';
+import { exists as fsExists } from '@tauri-apps/api/fs';
 import { DirectoryNode } from '../types';
 
 /**
@@ -135,6 +136,19 @@ export const fileSystemService = {
       })
       .filter(Boolean)
       .join('/');
+  },
+
+  /**
+   * Check if a file or folder exists
+   * @param path - Path to check
+   * @returns true if exists, false otherwise
+   */
+  async exists(path: string): Promise<boolean> {
+    try {
+      return await fsExists(path);
+    } catch {
+      return false;
+    }
   },
 };
 

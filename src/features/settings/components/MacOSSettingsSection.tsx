@@ -43,7 +43,7 @@ export function MacOSSettingsSection({
         <Switch
           checked={launchAtStartup}
           onChange={handleLaunchAtStartupChange}
-          label="Lancer Forge au démarrage de macOS"
+          label="Lancer La Forge au démarrage de macOS"
           disabled={loading}
         />
 
@@ -56,7 +56,7 @@ export function MacOSSettingsSection({
         {showMenuBarIcon && (
           <p className="settings-hint" style={{ marginLeft: 8 }}>
             <Layout size={12} style={{ marginRight: 4 }} />
-            L'icône permet d'accéder rapidement à Forge depuis la barre de menus
+            L'icône permet d'accéder rapidement à La Forge depuis la barre de menus
           </p>
         )}
       </div>

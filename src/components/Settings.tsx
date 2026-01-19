@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Save, Check } from 'lucide-react';
-import { Settings as SettingsType, AutoOrganizeSettings } from '../types';
+import { Settings as SettingsType, AutoOrganizeSettings, Project } from '../types';
 import { Modal, Button, Tabs, treeToFlat } from './ui';
 import type { Tab } from './ui';
 import {
@@ -9,6 +9,7 @@ import {
   FolderStructureSection,
   AutoOrganizeSection,
   MacOSSettingsSection,
+  BackupSection,
 } from '../features/settings/components';
 import { useFolderTree } from '../features/settings/hooks/useFolderTree';
 
@@ -20,12 +21,23 @@ const DEFAULT_AUTO_ORGANIZE: AutoOrganizeSettings = {
 
 interface SettingsProps {
   settings: SettingsType;
+  projects?: Project[];
   onUpdate: (partial: Partial<SettingsType>) => void;
   onSave: () => void;
   onClose: () => void;
+  onProjectsRefresh?: () => void;
+  onNotification?: (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;
 }
 
-export function Settings({ settings, onUpdate, onSave, onClose }: SettingsProps) {
+export function Settings({
+  settings,
+  projects = [],
+  onUpdate,
+  onSave,
+  onClose,
+  onProjectsRefresh,
+  onNotification,
+}: SettingsProps) {
   const [workspacePath, setWorkspacePath] = useState(settings.workspacePath);
   const [geminiApiKey, setGeminiApiKey] = useState(settings.geminiApiKey || '');
   const [geminiModel, setGeminiModel] = useState(settings.geminiModel || '');
@@ -112,6 +124,21 @@ export function Settings({ settings, onUpdate, onSave, onClose }: SettingsProps)
             onDeleteFolder={deleteFolder}
             onRenameFolder={renameFolder}
             onReset={resetToDefault}
+          />
+        </div>
+      ),
+    },
+    {
+      id: 'backup',
+      label: 'Sauvegarde',
+      content: (
+        <div className="settings-content">
+          <BackupSection
+            settings={settings}
+            projects={projects}
+            onSettingsUpdate={onUpdate}
+            onProjectsRefresh={onProjectsRefresh || (() => {})}
+            onNotification={onNotification || (() => {})}
           />
         </div>
       ),

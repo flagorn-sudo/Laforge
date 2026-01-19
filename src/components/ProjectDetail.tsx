@@ -18,6 +18,8 @@ import {
   Check,
   ChevronDown,
   FolderSync,
+  FileText,
+  BookOpen,
 } from 'lucide-react';
 import { Project, PROJECT_STATUS_CONFIG, FTPProtocol, ReferenceWebsite, ProjectStatus } from '../types';
 import { ReorganizeProjectModal } from './ReorganizeProjectModal';
@@ -25,11 +27,13 @@ import { projectService } from '../services/projectService';
 import { sftpService } from '../services/sftpService';
 import { scrapingService } from '../services/scrapingService';
 import { geminiService } from '../services/geminiService';
+import { briefGenerator } from '../services/briefGenerator';
+import { fileSystemService } from '../services/fileSystemService';
 import { Button, Card, Modal, Tabs } from './ui';
-import { FTPSection, ProjectFileTree } from '../features/projects/components';
+import { FTPSection, ProjectFileTree, SyncProgress } from '../features/projects/components';
 import { ScrapingPanel } from '../features/scraping/components';
 import { useFTPConnection } from '../features/projects/hooks/useFTPConnection';
-import { useUIStore } from '../stores';
+import { useUIStore, useSyncStore } from '../stores';
 
 /**
  * Convert hex color to RGB
@@ -136,9 +140,9 @@ export function ProjectDetail({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showReorganizeModal, setShowReorganizeModal] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [generatingBrief, setGeneratingBrief] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [credentialsLoading, setCredentialsLoading] = useState(project.sftp.configured);
@@ -176,6 +180,8 @@ export function ProjectDetail({
   const [newReferenceUrl, setNewReferenceUrl] = useState('');
   const [editingCurrentSiteUrl, setEditingCurrentSiteUrl] = useState(false);
   const [editingTestUrl, setEditingTestUrl] = useState(false);
+  const [briefExists, setBriefExists] = useState(false);
+  const [briefPath, setBriefPath] = useState('');
 
   const {
     testing,
@@ -187,6 +193,11 @@ export function ProjectDetail({
   } = useFTPConnection();
 
   const { addNotification } = useUIStore();
+
+  // Sync store for progress tracking
+  const { getSyncState, startSync, resetSync } = useSyncStore();
+  const syncState = getSyncState(project.id);
+  const syncing = syncState.stage !== 'idle' && syncState.stage !== 'complete' && syncState.stage !== 'error';
 
   // Sync form state when project prop changes - single coherent useEffect
   useEffect(() => {
@@ -223,16 +234,40 @@ export function ProjectDetail({
     } else {
       setCredentialsLoading(false);
     }
-  }, [project.id]);
+
+    // 3. Check if brief exists
+    const checkBrief = async () => {
+      const path = fileSystemService.joinPath(project.path, 'Documentation', 'brief-projet.md');
+      setBriefPath(path);
+      try {
+        const exists = await fileSystemService.exists(path);
+        setBriefExists(exists);
+      } catch {
+        setBriefExists(false);
+      }
+    };
+    checkBrief();
+  }, [project.id, project.path]);
 
   const handleSync = async () => {
-    if (!onSync || syncing) return;
-    setSyncing(true);
-    try {
-      await onSync(project);
-    } finally {
-      setSyncing(false);
-    }
+    if (syncing) return;
+
+    // Switch to FTP tab to show progress
+    setActiveTab('ftp');
+
+    await startSync(project, (success, filesUploaded) => {
+      if (success) {
+        addNotification('success', `Synchronisation terminee: ${filesUploaded} fichier${filesUploaded > 1 ? 's' : ''} envoye${filesUploaded > 1 ? 's' : ''}`);
+        // Refresh project data
+        onUpdate(project);
+      } else {
+        addNotification('error', 'Erreur lors de la synchronisation');
+      }
+    });
+  };
+
+  const handleCloseSyncProgress = () => {
+    resetSync(project.id);
   };
 
   const handleDelete = async () => {
@@ -272,6 +307,31 @@ export function ProjectDetail({
       console.error('Analysis failed:', error);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleGenerateBrief = async () => {
+    if (generatingBrief) return;
+
+    setGeneratingBrief(true);
+    try {
+      const generatedPath = await briefGenerator.generateAndSaveBrief(project);
+      setBriefPath(generatedPath);
+      setBriefExists(true);
+      addNotification('success', 'Brief projet généré avec succès');
+      // Open the file in Finder
+      projectService.openInFinder(generatedPath);
+    } catch (error) {
+      console.error('Brief generation failed:', error);
+      addNotification('error', 'Erreur lors de la génération du brief');
+    } finally {
+      setGeneratingBrief(false);
+    }
+  };
+
+  const handleOpenBrief = () => {
+    if (briefPath) {
+      projectService.openInFinder(briefPath);
     }
   };
 
@@ -813,7 +873,7 @@ export function ProjectDetail({
                   <Button
                     variant="secondary"
                     onClick={() => projectService.openInFinder(project.path)}
-                    style={{ justifyContent: 'flex-start' }}
+                    className="action-btn-yellow"
                   >
                     <Folder size={16} />
                     Ouvrir dans Finder
@@ -821,16 +881,35 @@ export function ProjectDetail({
                   <Button
                     variant="secondary"
                     onClick={() => setShowReorganizeModal(true)}
-                    style={{ justifyContent: 'flex-start' }}
+                    className="action-btn-blue"
                   >
                     <FolderSync size={16} />
                     Réorganiser les dossiers
                   </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={handleGenerateBrief}
+                    disabled={generatingBrief}
+                    className="action-btn-green"
+                  >
+                    {generatingBrief ? <Loader size={16} className="spinner" /> : <FileText size={16} />}
+                    {generatingBrief ? 'Génération...' : 'Générer le brief'}
+                  </Button>
+                  {briefExists && (
+                    <Button
+                      variant="secondary"
+                      onClick={handleOpenBrief}
+                      className="action-btn-green"
+                    >
+                      <BookOpen size={16} />
+                      Ouvrir le brief
+                    </Button>
+                  )}
                   {currentSiteUrl && (
                     <Button
                       variant="secondary"
                       onClick={() => projectService.openInBrowser(currentSiteUrl)}
-                      style={{ justifyContent: 'flex-start' }}
+                      className="action-btn-blue"
                     >
                       <Globe size={16} />
                       Site actuel
@@ -840,7 +919,7 @@ export function ProjectDetail({
                     <Button
                       variant="secondary"
                       onClick={() => projectService.openInBrowser(testUrl)}
-                      style={{ justifyContent: 'flex-start' }}
+                      className="action-btn-green"
                     >
                       <TestTube size={16} />
                       URL de test
@@ -1138,30 +1217,48 @@ export function ProjectDetail({
 
         {/* Tab: FTP & Sync */}
         {activeTab === 'ftp' && (
-          <FTPSection
-            sftp={sftpForm}
-            localPath={localPath}
-            testUrl={testUrl}
-            savePassword={savePassword}
-            geminiApiKey={geminiApiKey}
-            geminiModel={geminiModel}
-            testing={testing}
-            testResult={testResult}
-            remoteFolders={remoteFolders}
-            loadingFolders={loadingFolders}
-            onSftpChange={handleSftpChange}
-            onLocalPathChange={(path) => {
-              setLocalPath(path);
-              setHasChanges(true);
-            }}
-            onTestUrlChange={(url) => {
-              setTestUrl(url);
-              setHasChanges(true);
-            }}
-            onSavePasswordChange={setSavePassword}
-            onTestConnection={handleTestConnection}
-            onResetTestResult={resetTestResult}
-          />
+          <>
+            <FTPSection
+              sftp={sftpForm}
+              localPath={localPath}
+              testUrl={testUrl}
+              savePassword={savePassword}
+              geminiApiKey={geminiApiKey}
+              geminiModel={geminiModel}
+              testing={testing}
+              testResult={testResult}
+              remoteFolders={remoteFolders}
+              loadingFolders={loadingFolders}
+              onSftpChange={handleSftpChange}
+              onLocalPathChange={(path) => {
+                setLocalPath(path);
+                setHasChanges(true);
+              }}
+              onTestUrlChange={(url) => {
+                setTestUrl(url);
+                setHasChanges(true);
+              }}
+              onSavePasswordChange={setSavePassword}
+              onTestConnection={handleTestConnection}
+              onResetTestResult={resetTestResult}
+            />
+
+            {/* Sync Progress - visible when syncing or after sync */}
+            {(syncState.stage !== 'idle') && (
+              <SyncProgress
+                stage={syncState.stage}
+                progress={syncState.progress}
+                currentFile={syncState.currentFile}
+                filesTotal={syncState.filesTotal}
+                filesCompleted={syncState.filesCompleted}
+                files={syncState.files}
+                error={syncState.error}
+                onCancel={() => resetSync(project.id)}
+                onRetry={handleSync}
+                onClose={handleCloseSyncProgress}
+              />
+            )}
+          </>
         )}
 
         {/* Tab: Fichiers */}
@@ -1190,25 +1287,15 @@ export function ProjectDetail({
         {/* Tab: Scraping */}
         {activeTab === 'scraping' && (
           <ScrapingPanel
+            project={project}
             projectPath={project.path}
             projectName={project.client || project.name}
             initialUrl={currentSiteUrl}
             geminiApiKey={geminiApiKey}
             geminiModel={geminiModel}
-            onScrapingComplete={(result) => {
-              // Update project with scraped colors and fonts
-              const updated: Project = {
-                ...project,
-                colors: [...new Set([...project.colors, ...result.colors])], // Toutes les couleurs
-                fonts: [...new Set([...project.fonts, ...result.fonts])],   // Toutes les polices
-                scraping: {
-                  completed: true,
-                  sourceUrl: currentSiteUrl,
-                  scrapedAt: new Date().toISOString(),
-                },
-                updated: new Date().toISOString(),
-              };
-              onUpdate(updated);
+            onScrapingComplete={(_result, updatedProject) => {
+              // Le projet mis à jour est retourné par le store avec les stats de scraping
+              onUpdate(updatedProject);
             }}
           />
         )}

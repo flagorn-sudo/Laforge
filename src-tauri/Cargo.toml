@@ -11,7 +11,7 @@ edition = "2021"
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
-tauri = { version = "1.5", features = [ "os-all", "shell-open", "dialog-all", "fs-all", "path-all"] }
+tauri = { version = "1.5", features = [ "updater", "os-all", "shell-open", "dialog-all", "fs-all", "path-all", "system-tray"] }
 # Tauri plugin for persistent key-value storage
 tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
 # For user directories

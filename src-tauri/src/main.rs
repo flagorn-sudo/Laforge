@@ -2,6 +2,7 @@
 
 mod watcher;
 mod scraper;
+mod tray;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -12,7 +13,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::{Manager, State};
+use tauri::{
+    CustomMenuItem, Manager, Menu, MenuItem, State, Submenu, WindowMenuEvent,
+};
 use walkdir::WalkDir;
 
 use watcher::FileWatcherManager;
@@ -1139,21 +1142,10 @@ fn get_launch_agent_path() -> Option<std::path::PathBuf> {
     })
 }
 
-fn get_app_path() -> Option<String> {
+fn get_executable_path() -> Option<String> {
     std::env::current_exe()
         .ok()
-        .and_then(|path| {
-            // Navigate up to the .app bundle
-            let mut current = path.as_path();
-            while let Some(parent) = current.parent() {
-                if current.extension().map_or(false, |ext| ext == "app") {
-                    return Some(current.to_string_lossy().to_string());
-                }
-                current = parent;
-            }
-            // Fallback to the executable path
-            Some(path.to_string_lossy().to_string())
-        })
+        .map(|path| path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -1167,13 +1159,14 @@ fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
     let plist_path = get_launch_agent_path().ok_or("Could not determine home directory")?;
 
     if enabled {
-        let app_path = get_app_path().ok_or("Could not determine app path")?;
+        let executable_path = get_executable_path().ok_or("Could not determine executable path")?;
 
         // Create LaunchAgents directory if it doesn't exist
         if let Some(parent) = plist_path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
 
+        // Use direct executable path instead of "open -a" to show "La Forge" in startup items
         let plist_content = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1183,8 +1176,6 @@ fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
     <string>{}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>open</string>
-        <string>-a</string>
         <string>{}</string>
     </array>
     <key>RunAtLoad</key>
@@ -1192,7 +1183,7 @@ fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
 </dict>
 </plist>
 "#,
-            LAUNCH_AGENT_LABEL, app_path
+            LAUNCH_AGENT_LABEL, executable_path
         );
 
         fs::write(&plist_path, plist_content).map_err(|e| format!("Failed to write plist: {}", e))?;
@@ -1205,10 +1196,184 @@ fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+// ============================================
+// Menu Configuration (French labels)
+// ============================================
+
+fn create_menu() -> Menu {
+    // Menu La Forge (Application)
+    let app_menu = Submenu::new(
+        "La Forge",
+        Menu::new()
+            .add_item(CustomMenuItem::new("about", "À propos de La Forge"))
+            .add_native_item(MenuItem::Separator)
+            .add_item(
+                CustomMenuItem::new("preferences", "Préférences...")
+                    .accelerator("CmdOrCtrl+,"),
+            )
+            .add_native_item(MenuItem::Separator)
+            .add_native_item(MenuItem::Services)
+            .add_native_item(MenuItem::Separator)
+            .add_native_item(MenuItem::Hide)
+            .add_native_item(MenuItem::HideOthers)
+            .add_native_item(MenuItem::ShowAll)
+            .add_native_item(MenuItem::Separator)
+            .add_native_item(MenuItem::Quit),
+    );
+
+    // Menu Fichier
+    let file_menu = Submenu::new(
+        "Fichier",
+        Menu::new()
+            .add_item(
+                CustomMenuItem::new("new_project", "Nouveau projet...")
+                    .accelerator("CmdOrCtrl+N"),
+            )
+            .add_native_item(MenuItem::Separator)
+            .add_item(
+                CustomMenuItem::new("close_window", "Fermer la fenêtre")
+                    .accelerator("CmdOrCtrl+W"),
+            ),
+    );
+
+    // Menu Édition
+    let edit_menu = Submenu::new(
+        "Édition",
+        Menu::new()
+            .add_native_item(MenuItem::Undo)
+            .add_native_item(MenuItem::Redo)
+            .add_native_item(MenuItem::Separator)
+            .add_native_item(MenuItem::Cut)
+            .add_native_item(MenuItem::Copy)
+            .add_native_item(MenuItem::Paste)
+            .add_native_item(MenuItem::SelectAll),
+    );
+
+    // Menu Affichage
+    let view_menu = Submenu::new(
+        "Affichage",
+        Menu::new()
+            .add_item(
+                CustomMenuItem::new("refresh", "Actualiser")
+                    .accelerator("CmdOrCtrl+R"),
+            )
+            .add_native_item(MenuItem::Separator)
+            .add_native_item(MenuItem::EnterFullScreen),
+    );
+
+    // Menu Projet
+    let project_menu = Submenu::new(
+        "Projet",
+        Menu::new()
+            .add_item(
+                CustomMenuItem::new("open_in_finder", "Ouvrir dans le Finder")
+                    .accelerator("CmdOrCtrl+Shift+O"),
+            )
+            .add_item(
+                CustomMenuItem::new("open_in_browser", "Ouvrir le site")
+                    .accelerator("CmdOrCtrl+Shift+B"),
+            )
+            .add_native_item(MenuItem::Separator)
+            .add_item(
+                CustomMenuItem::new("sync_project", "Synchroniser")
+                    .accelerator("CmdOrCtrl+Shift+S"),
+            )
+            .add_native_item(MenuItem::Separator)
+            .add_item(CustomMenuItem::new("scrape_site", "Scraper le site...")),
+    );
+
+    // Menu Fenêtre
+    let window_menu = Submenu::new(
+        "Fenêtre",
+        Menu::new()
+            .add_native_item(MenuItem::Minimize)
+            .add_native_item(MenuItem::Zoom)
+            .add_native_item(MenuItem::Separator)
+            .add_native_item(MenuItem::CloseWindow),
+    );
+
+    // Menu Aide
+    let help_menu = Submenu::new(
+        "Aide",
+        Menu::new()
+            .add_item(CustomMenuItem::new("documentation", "Documentation"))
+            .add_item(CustomMenuItem::new("report_issue", "Signaler un problème...")),
+    );
+
+    Menu::new()
+        .add_submenu(app_menu)
+        .add_submenu(file_menu)
+        .add_submenu(edit_menu)
+        .add_submenu(view_menu)
+        .add_submenu(project_menu)
+        .add_submenu(window_menu)
+        .add_submenu(help_menu)
+}
+
+fn handle_menu_event(event: WindowMenuEvent) {
+    let window = event.window();
+
+    match event.menu_item_id() {
+        "about" => {
+            // Emit event to frontend to show about dialog
+            let _ = window.emit("menu-about", ());
+        }
+        "preferences" => {
+            // Navigate to settings
+            let _ = window.emit("menu-preferences", ());
+        }
+        "new_project" => {
+            let _ = window.emit("menu-new-project", ());
+        }
+        "close_window" => {
+            let _ = window.close();
+        }
+        "refresh" => {
+            let _ = window.emit("menu-refresh", ());
+        }
+        "open_in_finder" => {
+            let _ = window.emit("menu-open-finder", ());
+        }
+        "open_in_browser" => {
+            let _ = window.emit("menu-open-browser", ());
+        }
+        "sync_project" => {
+            let _ = window.emit("menu-sync", ());
+        }
+        "scrape_site" => {
+            let _ = window.emit("menu-scrape", ());
+        }
+        "documentation" => {
+            let _ = Command::new("open")
+                .arg("https://github.com/anthropics/forge")
+                .spawn();
+        }
+        "report_issue" => {
+            let _ = Command::new("open")
+                .arg("https://github.com/anthropics/forge/issues")
+                .spawn();
+        }
+        _ => {}
+    }
+}
+
 fn main() {
     tauri::Builder::default()
+        .menu(create_menu())
+        .on_menu_event(handle_menu_event)
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(Mutex::new(FileWatcherManager::new()))
+        .system_tray(tray::create_system_tray())
+        .on_system_tray_event(tray::handle_tray_event)
+        .on_window_event(|event| {
+            // Hide window instead of closing when red button is clicked
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
+                // Prevent the window from being destroyed
+                api.prevent_close();
+                // Hide the window instead
+                let _ = event.window().hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             open_in_finder,
             sftp_test_connection,
@@ -1234,7 +1399,10 @@ fn main() {
             move_item,
             create_project_structure,
             // Scraping command
-            scrape_website
+            scrape_website,
+            // System tray commands
+            tray::tray_update_recent_projects,
+            tray::tray_is_available
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

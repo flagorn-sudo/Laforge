@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader, Folder, ArrowRight, CheckCircle, FolderSync } from 'lucide-react';
+import { Loader, Folder, ArrowRight, CheckCircle, FolderSync, Trash2 } from 'lucide-react';
 import { Project } from '../types';
 import { projectReorganizeService, ReorganizeProposal } from '../services/projectReorganizeService';
 import { fileSystemService } from '../services/fileSystemService';
@@ -66,6 +66,9 @@ export function ReorganizeProjectModal({
         if (result.movedCount > 0) {
           messages.push(`${result.movedCount} fichier${result.movedCount > 1 ? 's' : ''} déplacé${result.movedCount > 1 ? 's' : ''}`);
         }
+        if (result.foldersDeleted > 0) {
+          messages.push(`${result.foldersDeleted} dossier${result.foldersDeleted > 1 ? 's' : ''} vide${result.foldersDeleted > 1 ? 's' : ''} supprimé${result.foldersDeleted > 1 ? 's' : ''}`);
+        }
         addNotification('success', `Réorganisation terminée : ${messages.join(', ')}`);
         onComplete();
       } else {
@@ -101,7 +104,8 @@ export function ReorganizeProjectModal({
 
   const isProjectOrganized = proposal &&
     proposal.foldersToCreate.length === 0 &&
-    proposal.filesToMove.length === 0;
+    proposal.filesToMove.length === 0 &&
+    proposal.emptyFoldersToDelete.length === 0;
 
   return (
     <Modal
@@ -113,7 +117,7 @@ export function ReorganizeProjectModal({
           <Button variant="secondary" onClick={onClose} disabled={executing}>
             {isProjectOrganized ? 'Fermer' : 'Annuler'}
           </Button>
-          {!isProjectOrganized && proposal && (proposal.foldersToCreate.length > 0 || selectedMoves.size > 0) && (
+          {!isProjectOrganized && proposal && (proposal.foldersToCreate.length > 0 || selectedMoves.size > 0 || proposal.emptyFoldersToDelete.length > 0) && (
             <Button onClick={handleExecute} disabled={executing}>
               {executing ? (
                 <>
@@ -210,6 +214,32 @@ export function ReorganizeProjectModal({
                 {proposal.filesUnmapped.length > 10 && (
                   <li className="more-items">
                     ... et {proposal.filesUnmapped.length - 10} autres
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {/* Empty folders to delete */}
+          {proposal.emptyFoldersToDelete.length > 0 && (
+            <div className="reorganize-section">
+              <h4>
+                <Trash2 size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                Dossiers vides à supprimer ({proposal.emptyFoldersToDelete.length})
+              </h4>
+              <p className="reorganize-hint">
+                Ces dossiers ne font pas partie de la structure standard et sont vides.
+              </p>
+              <ul className="folders-list folders-delete">
+                {proposal.emptyFoldersToDelete.slice(0, 15).map((f) => (
+                  <li key={f}>
+                    <Folder size={14} />
+                    {f}
+                  </li>
+                ))}
+                {proposal.emptyFoldersToDelete.length > 15 && (
+                  <li className="more-items">
+                    ... et {proposal.emptyFoldersToDelete.length - 15} autres
                   </li>
                 )}
               </ul>

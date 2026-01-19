@@ -2452,6 +2452,15 @@ body {
   color: var(--accent-yellow);
 }
 
+.folders-list.folders-delete li {
+  color: var(--error);
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.folders-list.folders-delete li svg {
+  color: var(--error);
+}
+
 .file-moves-list {
   display: flex;
   flex-direction: column;
@@ -2601,4 +2610,253 @@ body {
   color: var(--error);
   font-size: 14px;
   margin-top: 16px;
+}
+
+/* ============================================
+   Colored Action Buttons (Sidebar)
+   ============================================ */
+
+/* Base styles for colored action buttons */
+.action-btn-yellow,
+.action-btn-blue,
+.action-btn-green {
+  justify-content: flex-start;
+  transition: all 0.2s ease;
+}
+
+/* Yellow button (Finder) */
+.action-btn-yellow {
+  border-color: rgba(255, 193, 7, 0.3);
+}
+
+.action-btn-yellow:hover {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.15) 0%, rgba(255, 193, 7, 0.05) 100%);
+  border-color: var(--accent-yellow);
+  color: var(--accent-yellow);
+}
+
+.action-btn-yellow:hover svg {
+  color: var(--accent-yellow);
+}
+
+.action-btn-yellow svg {
+  color: rgba(255, 193, 7, 0.7);
+}
+
+/* Blue button (Reorganize, Site) */
+.action-btn-blue {
+  border-color: rgba(79, 195, 247, 0.3);
+}
+
+.action-btn-blue:hover {
+  background: linear-gradient(135deg, rgba(79, 195, 247, 0.15) 0%, rgba(79, 195, 247, 0.05) 100%);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.action-btn-blue:hover svg {
+  color: var(--accent-blue);
+}
+
+.action-btn-blue svg {
+  color: rgba(79, 195, 247, 0.7);
+}
+
+/* Green button (Brief, Test URL) */
+.action-btn-green {
+  border-color: rgba(76, 175, 80, 0.3);
+}
+
+.action-btn-green:hover {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.15) 0%, rgba(76, 175, 80, 0.05) 100%);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.action-btn-green:hover svg {
+  color: var(--success);
+}
+
+.action-btn-green svg {
+  color: rgba(76, 175, 80, 0.7);
+}
+
+/* ============================================
+   Loading Screen
+   ============================================ */
+
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg-primary);
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-content p {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+/* ============================================
+   Backup Section (Settings)
+   ============================================ */
+
+.backup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.backup-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.backup-info {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.backup-warning {
+  padding: 12px;
+  background: rgba(255, 183, 77, 0.1);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--warning);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backup-info-box {
+  padding: 12px;
+  background: rgba(79, 195, 247, 0.1);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--accent-blue);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.import-preview {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent-blue);
+  border-radius: var(--radius-md);
+}
+
+.import-preview h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: var(--accent-blue);
+}
+
+.import-preview p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 8px 0;
+}
+
+.import-preview p strong {
+  color: var(--text-primary);
+}
+
+.import-preview-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* ============================================
+   About Modal
+   ============================================ */
+
+.about-modal .modal {
+  max-width: 380px;
+}
+
+.about-modal .modal-header {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.about-content {
+  text-align: center;
+  padding: 8px 24px 24px;
+}
+
+.about-icon {
+  width: 96px;
+  height: 96px;
+  border-radius: 22%;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.about-content h1 {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--text-primary);
+}
+
+.about-version {
+  color: var(--text-secondary);
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+
+.about-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+
+.about-copyright {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.about-copyright p {
+  margin: 6px 0;
+}
+
+.about-copyright a {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.about-copyright a:hover {
+  text-decoration: underline;
+}
+
+.about-legal {
+  margin-top: 12px !important;
+  font-size: 10px;
+  opacity: 0.7;
 }

@@ -1,0 +1,265 @@
+/**
+ * SyncProgress Component Styles
+ */
+
+.sync-progress {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.sync-progress.complete {
+  border-color: var(--success);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.sync-progress.error {
+  border-color: var(--error);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+/* Header */
+.sync-progress-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sync-progress-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.sync-progress-icon.connecting,
+.sync-progress-icon.analyzing,
+.sync-progress-icon.uploading {
+  background: var(--accent);
+  color: white;
+}
+
+.sync-progress-icon.complete {
+  background: var(--success);
+  color: white;
+}
+
+.sync-progress-icon.error {
+  background: var(--error);
+  color: white;
+}
+
+.sync-progress-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.sync-progress-title h4 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sync-current-file {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-complete-message {
+  font-size: 13px;
+  color: var(--success);
+}
+
+.sync-close-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.sync-close-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Progress bar */
+.sync-progress-bar-container {
+  margin-bottom: 16px;
+}
+
+.sync-progress-bar {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.sync-progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.sync-progress-bar-fill.complete {
+  background: var(--success);
+}
+
+.sync-progress-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sync-progress-stats span:first-child {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.sync-progress.complete .sync-progress-stats span:first-child {
+  color: var(--success);
+}
+
+/* Error message */
+.sync-error-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  color: var(--error);
+  font-size: 13px;
+}
+
+.sync-error-message svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Files list */
+.sync-files-container {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.sync-files-header {
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.sync-files-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sync-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s;
+}
+
+.sync-file-item:last-child {
+  border-bottom: none;
+}
+
+.sync-file-item.uploading {
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.sync-file-item.uploaded {
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.sync-file-item.error {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.sync-file-icon {
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.sync-file-item.uploading .sync-file-icon {
+  color: var(--accent);
+}
+
+.sync-file-item.uploaded .sync-file-icon {
+  color: var(--success);
+}
+
+.sync-file-item.error .sync-file-icon {
+  color: var(--error);
+}
+
+.sync-file-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.sync-file-size {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.sync-files-more {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+  font-style: italic;
+}
+
+/* Actions */
+.sync-progress-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Spinner animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}

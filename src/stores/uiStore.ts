@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type ModalType = 'settings' | 'createProject' | 'editProject' | 'smartPaste' | null;
+type ModalType = 'settings' | 'createProject' | 'editProject' | 'smartPaste' | 'about' | null;
 type NotificationType = 'success' | 'error' | 'warning' | 'info';
 
 interface Notification {

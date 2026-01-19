@@ -10,21 +10,27 @@ import {
   RefreshCw,
   Sparkles,
   X,
+  Clock,
+  Type,
 } from 'lucide-react';
 import { Button, Card, Switch } from '../../../components/ui';
 import { ScrapeResult } from '../../../services/documentationService';
 import { useScrapingStore } from '../../../stores';
+import { Project } from '../../../types';
+import { ScrapingProgress } from './ScrapingProgress';
 
 interface ScrapingPanelProps {
+  project: Project;
   projectPath: string;
   projectName: string;
   initialUrl?: string;
   geminiApiKey?: string;
   geminiModel?: string;
-  onScrapingComplete?: (result: ScrapeResult) => void;
+  onScrapingComplete?: (result: ScrapeResult, updatedProject: Project) => void;
 }
 
 export function ScrapingPanel({
+  project,
   projectPath,
   projectName,
   initialUrl = '',
@@ -33,6 +39,11 @@ export function ScrapingPanel({
   onScrapingComplete,
 }: ScrapingPanelProps) {
   const [url, setUrl] = useState(initialUrl);
+  const [showNewScraping, setShowNewScraping] = useState(false);
+
+  // Récupérer les stats de scraping précédent depuis le projet
+  const previousScraping = project.scraping;
+  const hasPreviousScraping = previousScraping?.completed && previousScraping?.stats;
 
   // Options (local state - doesn't need to persist)
   const [downloadImages, setDownloadImages] = useState(true);
@@ -54,6 +65,7 @@ export function ScrapingPanel({
       projectPath,
       projectName,
       url: url.trim(),
+      project,
       options: {
         maxPages,
         downloadImages,
@@ -65,6 +77,9 @@ export function ScrapingPanel({
       geminiModel,
       onComplete: onScrapingComplete,
     });
+
+    // Masquer le formulaire après le lancement
+    setShowNewScraping(false);
   };
 
   const handleReset = () => {
@@ -73,14 +88,148 @@ export function ScrapingPanel({
 
   const isRunning = stage !== 'idle' && stage !== 'complete' && stage !== 'error';
 
+  // Formater la date de scraping
+  const formatScrapingDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   return (
     <div className="scraping-panel">
-      {/* URL Input Section */}
+      {/* Section: Scraping précédent */}
+      {hasPreviousScraping && !showNewScraping && stage === 'idle' && (
+        <div className="scraping-section">
+          <h3 className="scraping-section-title">
+            <CheckCircle size={16} style={{ color: 'var(--success)' }} />
+            Scraping effectue
+          </h3>
+
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: 13, marginBottom: 8 }}>
+              <Clock size={14} />
+              <span>{formatScrapingDate(previousScraping.scrapedAt!)}</span>
+            </div>
+            {previousScraping.sourceUrl && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: 13 }}>
+                <Globe size={14} />
+                <a
+                  href={previousScraping.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--accent)', textDecoration: 'none' }}
+                >
+                  {previousScraping.sourceUrl}
+                </a>
+              </div>
+            )}
+          </div>
+
+          <div className="scraping-results-grid">
+            <div className="scraping-result-item">
+              <span className="scraping-result-value">{previousScraping.stats!.pagesCount}</span>
+              <span className="scraping-result-label">Pages</span>
+            </div>
+            <div className="scraping-result-item">
+              <span className="scraping-result-value">{previousScraping.stats!.imagesCount}</span>
+              <span className="scraping-result-label">Images</span>
+            </div>
+            <div className="scraping-result-item">
+              <span className="scraping-result-value">{previousScraping.stats!.textsCount}</span>
+              <span className="scraping-result-label">Textes</span>
+            </div>
+            <div className="scraping-result-item">
+              <span className="scraping-result-value">{previousScraping.stats!.colorsCount}</span>
+              <span className="scraping-result-label">Couleurs</span>
+            </div>
+            <div className="scraping-result-item">
+              <span className="scraping-result-value">{previousScraping.stats!.fontsCount}</span>
+              <span className="scraping-result-label">Polices</span>
+            </div>
+          </div>
+
+          {/* Aperçu couleurs */}
+          {previousScraping.stats!.colors.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Palette size={14} />
+                Couleurs detectees
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {[...new Set(previousScraping.stats!.colors)].slice(0, 20).map((color, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: 24,
+                      height: 24,
+                      background: color,
+                      borderRadius: 4,
+                      border: '2px solid var(--border)',
+                      cursor: 'pointer',
+                    }}
+                    title={`${color} - Cliquez pour copier`}
+                    onClick={() => navigator.clipboard.writeText(color)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Aperçu polices */}
+          {previousScraping.stats!.fonts.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Type size={14} />
+                Polices detectees
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {[...new Set(previousScraping.stats!.fonts)].map((font, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      padding: '4px 8px',
+                      background: 'var(--bg-tertiary)',
+                      borderRadius: 4,
+                      fontSize: 12,
+                    }}
+                  >
+                    {font}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginTop: 20 }}>
+            <Button variant="secondary" onClick={() => setShowNewScraping(true)}>
+              <RefreshCw size={16} />
+              Relancer un scraping
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* URL Input Section - visible si pas de scraping précédent ou si on veut relancer */}
+      {(!hasPreviousScraping || showNewScraping || stage !== 'idle') && (
       <div className="scraping-section">
         <h3 className="scraping-section-title">
           <Globe size={16} />
-          Scraper un site
+          {hasPreviousScraping ? 'Nouveau scraping' : 'Scraper un site'}
         </h3>
+
+        {hasPreviousScraping && showNewScraping && stage === 'idle' && (
+          <div style={{ marginBottom: 16 }}>
+            <Button variant="ghost" onClick={() => setShowNewScraping(false)} style={{ padding: '4px 8px', fontSize: 13 }}>
+              <X size={14} />
+              Annuler
+            </Button>
+          </div>
+        )}
 
         <div className="scraping-url-input">
           <input
@@ -153,53 +302,22 @@ export function ScrapingPanel({
           </div>
         )}
 
-        {/* Progress */}
-        {isRunning && (
-          <div className="scraping-progress-container">
-            <div className="scraping-progress-header">
-              <Loader size={20} className="spinner" />
-              <div className="scraping-progress-info">
-                <strong>{progressMessage || 'Demarrage...'}</strong>
-                <span className="scraping-progress-hint">
-                  {stage === 'scraping' && 'Connexion au site et telechargement des pages...'}
-                  {stage === 'organizing' && 'Classement des fichiers dans les dossiers...'}
-                  {stage === 'generating' && 'Creation du fichier de documentation...'}
-                  {stage === 'improving' && 'Analyse et amelioration des textes avec l\'IA...'}
-                </span>
-              </div>
-            </div>
-            <div className="scraping-progress">
-              <div className="scraping-progress-bar">
-                <div
-                  className="scraping-progress-bar-fill"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <div className="scraping-progress-text">
-                <span>{progress}%</span>
-              </div>
-            </div>
-            <p className="scraping-patience-message">
-              <AlertTriangle size={14} />
-              Cette operation peut prendre plusieurs minutes selon la taille du site.
-              Ne fermez pas l'application.
-            </p>
-          </div>
+        {/* Progress - Enhanced visual indicator */}
+        {(isRunning || stage === 'complete') && (
+          <ScrapingProgress
+            stage={stage}
+            progress={progress}
+            progressMessage={progressMessage}
+            showImproving={improveTextsOption && !!geminiApiKey}
+          />
         )}
 
-        {/* Progress complete */}
-        {stage === 'complete' && (
-          <div className="scraping-progress">
-            <div className="scraping-progress-bar">
-              <div
-                className="scraping-progress-bar-fill"
-                style={{ width: '100%' }}
-              />
-            </div>
-            <div className="scraping-progress-text">
-              <span>{progressMessage}</span>
-              <span>100%</span>
-            </div>
+        {/* Warning message during scraping */}
+        {isRunning && (
+          <div className="scraping-patience-message" style={{ marginTop: 16 }}>
+            <AlertTriangle size={14} />
+            Cette operation peut prendre plusieurs minutes selon la taille du site.
+            Ne fermez pas l'application.
           </div>
         )}
 
@@ -229,6 +347,7 @@ export function ScrapingPanel({
           </div>
         )}
       </div>
+      )}
 
       {/* Results Section */}
       {result && (

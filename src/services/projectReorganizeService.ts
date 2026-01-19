@@ -11,6 +11,7 @@ export interface ReorganizeProposal {
   foldersToCreate: string[];
   filesToMove: FileMoveProposal[];
   filesUnmapped: string[];
+  emptyFoldersToDelete: string[];
 }
 
 interface FileInfo {
@@ -21,20 +22,25 @@ interface FileInfo {
 
 /**
  * Extract all folder paths from a directory tree
+ * @param node The directory node to process
+ * @param basePath The path relative to the project root (empty for root level)
+ * @param isRoot Whether this is the root node (project folder itself)
  */
-function extractFolderPaths(node: DirectoryNode, basePath: string = ''): string[] {
+function extractFolderPaths(node: DirectoryNode, basePath: string = '', isRoot: boolean = true): string[] {
   const folders: string[] = [];
 
   if (node.isDirectory) {
-    const relativePath = basePath ? `${basePath}/${node.name}` : node.name;
-    // Skip the root path itself
-    if (basePath) {
+    // For root node, don't include the project folder name in the path
+    const relativePath = isRoot ? '' : (basePath ? `${basePath}/${node.name}` : node.name);
+
+    // Don't add the root itself to the folder list
+    if (!isRoot) {
       folders.push(relativePath);
     }
 
     if (node.children) {
       for (const child of node.children) {
-        folders.push(...extractFolderPaths(child, basePath ? relativePath : ''));
+        folders.push(...extractFolderPaths(child, relativePath, false));
       }
     }
   }
@@ -44,8 +50,11 @@ function extractFolderPaths(node: DirectoryNode, basePath: string = ''): string[
 
 /**
  * Extract all files from a directory tree
+ * @param node The directory node to process
+ * @param basePath The path relative to the project root (empty for root level)
+ * @param isRoot Whether this is the root node (project folder itself)
  */
-function extractAllFiles(node: DirectoryNode, basePath: string = ''): FileInfo[] {
+function extractAllFiles(node: DirectoryNode, basePath: string = '', isRoot: boolean = true): FileInfo[] {
   const files: FileInfo[] = [];
 
   if (!node.isDirectory) {
@@ -58,9 +67,12 @@ function extractAllFiles(node: DirectoryNode, basePath: string = ''): FileInfo[]
       extension,
     });
   } else if (node.children) {
-    const currentPath = basePath ? `${basePath}/${node.name}` : node.name;
+    // For root node, don't include the project folder name in the path
+    // For subdirectories, build the relative path
+    const currentPath = isRoot ? '' : (basePath ? `${basePath}/${node.name}` : node.name);
+
     for (const child of node.children) {
-      files.push(...extractAllFiles(child, basePath ? currentPath : ''));
+      files.push(...extractAllFiles(child, currentPath, false));
     }
   }
 
@@ -68,11 +80,56 @@ function extractAllFiles(node: DirectoryNode, basePath: string = ''): FileInfo[]
 }
 
 /**
+ * Find empty folders in the directory tree
+ * Returns paths relative to project root
+ */
+function findEmptyFolders(node: DirectoryNode, basePath: string = '', isRoot: boolean = true): string[] {
+  const emptyFolders: string[] = [];
+
+  if (node.isDirectory) {
+    const relativePath = isRoot ? '' : (basePath ? `${basePath}/${node.name}` : node.name);
+
+    if (node.children) {
+      // If folder is completely empty (no children), mark it
+      if (!isRoot && node.children.length === 0) {
+        emptyFolders.push(relativePath);
+      }
+
+      // Recurse into children
+      for (const child of node.children) {
+        emptyFolders.push(...findEmptyFolders(child, relativePath, false));
+      }
+    } else if (!isRoot) {
+      // Folder with no children = empty
+      emptyFolders.push(relativePath);
+    }
+  }
+
+  return emptyFolders;
+}
+
+/**
+ * Check if a folder path is part of the standard structure
+ */
+function isStandardFolder(folderPath: string): boolean {
+  return DEFAULT_FOLDER_STRUCTURE.some(
+    standard => folderPath === standard || folderPath.startsWith(standard + '/')
+  );
+}
+
+/**
  * Check if a file is already in a correct location within the structure
+ * Note: Files in _Inbox/scraped/ subfolders are NOT considered "correct"
+ * as they should be moved to their proper destinations
  */
 function isInCorrectLocation(filePath: string): boolean {
+  // Files in _Inbox/scraped/ subfolders should be moved
+  if (filePath.startsWith('_Inbox/scraped/')) {
+    return false;
+  }
+
   const correctFolders = [
-    '_Inbox', '_Inbox/scraped',
+    '_Inbox',
     'Source',
     'Documentation', 'Documentation/admin', 'Documentation/textes', 'Documentation/notes',
     'Assets', 'Assets/images', 'Assets/design',
@@ -98,6 +155,62 @@ function categorizeFile(file: FileInfo, projectPath: string): FileMoveProposal |
 
   // Don't move hidden files
   if (name.startsWith('.')) return null;
+
+  // === Handle _Inbox/scraped/ files with priority ===
+
+  // CSS files from _Inbox/scraped/css/ → References/styles/
+  if (file.path.startsWith('_Inbox/scraped/css/')) {
+    return {
+      source: `${projectPath}/${file.path}`,
+      destination: `${projectPath}/References/styles/${file.name}`,
+      reason: 'Style scrapé',
+    };
+  }
+
+  // Images from _Inbox/scraped/images/ → References/images/
+  if (file.path.startsWith('_Inbox/scraped/images/')) {
+    return {
+      source: `${projectPath}/${file.path}`,
+      destination: `${projectPath}/References/images/${file.name}`,
+      reason: 'Image scrapée',
+    };
+  }
+
+  // Text files from _Inbox/scraped/texts/ → Documentation/textes/
+  if (file.path.startsWith('_Inbox/scraped/texts/')) {
+    return {
+      source: `${projectPath}/${file.path}`,
+      destination: `${projectPath}/Documentation/textes/${file.name}`,
+      reason: 'Texte scrapé',
+    };
+  }
+
+  // Generic scraped files - categorize by extension
+  if (file.path.startsWith('_Inbox/scraped/')) {
+    if (['.css', '.scss', '.sass', '.less'].includes(ext)) {
+      return {
+        source: `${projectPath}/${file.path}`,
+        destination: `${projectPath}/References/styles/${file.name}`,
+        reason: 'Style scrapé',
+      };
+    }
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico'].includes(ext)) {
+      return {
+        source: `${projectPath}/${file.path}`,
+        destination: `${projectPath}/References/images/${file.name}`,
+        reason: 'Image scrapée',
+      };
+    }
+    if (['.txt', '.md', '.json'].includes(ext)) {
+      return {
+        source: `${projectPath}/${file.path}`,
+        destination: `${projectPath}/Documentation/textes/${file.name}`,
+        reason: 'Texte scrapé',
+      };
+    }
+  }
+
+  // === Standard file categorization ===
 
   // Images
   if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'].includes(ext)) {
@@ -210,7 +323,11 @@ export const projectReorganizeService = {
       }
     }
 
-    return { foldersToCreate, filesToMove, filesUnmapped };
+    // 4. Find empty folders that are NOT part of the standard structure
+    const emptyFolders = findEmptyFolders(tree);
+    const emptyFoldersToDelete = emptyFolders.filter(folder => !isStandardFolder(folder));
+
+    return { foldersToCreate, filesToMove, filesUnmapped, emptyFoldersToDelete };
   },
 
   /**
@@ -219,10 +336,11 @@ export const projectReorganizeService = {
   async executeReorganization(
     projectPath: string,
     proposal: ReorganizeProposal
-  ): Promise<{ success: boolean; movedCount: number; foldersCreated: number; errors: string[] }> {
+  ): Promise<{ success: boolean; movedCount: number; foldersCreated: number; foldersDeleted: number; errors: string[] }> {
     const errors: string[] = [];
     let movedCount = 0;
     let foldersCreated = 0;
+    let foldersDeleted = 0;
 
     // 1. Create missing folders
     for (const folder of proposal.foldersToCreate) {
@@ -235,9 +353,14 @@ export const projectReorganizeService = {
       }
     }
 
-    // 2. Move files
+    // 2. Move files (create destination folder if needed)
     for (const move of proposal.filesToMove) {
       try {
+        // Create the destination folder if it doesn't exist
+        const destFolder = fileSystemService.getParentPath(move.destination);
+        if (destFolder && destFolder !== '/') {
+          await fileSystemService.createFolder(destFolder);
+        }
         await fileSystemService.moveItem(move.source, move.destination);
         movedCount++;
       } catch (e) {
@@ -245,10 +368,24 @@ export const projectReorganizeService = {
       }
     }
 
+    // 3. Delete empty folders (deepest first to avoid "not empty" errors)
+    const sortedFolders = [...proposal.emptyFoldersToDelete].sort((a, b) => b.length - a.length);
+    for (const folder of sortedFolders) {
+      try {
+        const fullPath = fileSystemService.joinPath(projectPath, folder);
+        await fileSystemService.deleteFolder(fullPath, false);
+        foldersDeleted++;
+      } catch (e) {
+        // Ignore errors for folder deletion (might not be empty anymore)
+        console.log(`Could not delete folder ${folder}: ${e}`);
+      }
+    }
+
     return {
       success: errors.length === 0,
       movedCount,
       foldersCreated,
+      foldersDeleted,
       errors,
     };
   },

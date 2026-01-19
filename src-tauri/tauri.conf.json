@@ -6,7 +6,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "Forge",
+    "productName": "La Forge",
     "version": "1.0.0"
   },
   "tauri": {
@@ -29,16 +29,33 @@
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
-        "icons/128x128@2x.png"
+        "icons/128x128@2x.png",
+        "icons/512x512.png",
+        "icons/512x512@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
       ],
       "identifier": "com.forge.app",
-      "targets": "all",
+      "targets": ["app"],
       "macOS": {
         "minimumSystemVersion": "10.15"
       }
     },
     "security": {
       "csp": null
+    },
+    "systemTray": {
+      "iconPath": "icons/tray-icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": true
+    },
+    "updater": {
+      "active": true,
+      "dialog": true,
+      "endpoints": [
+        "https://github.com/flagorn-sudo/Laforge/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZFOTMzRTY4NEVFRTgwRgpSV1FQNk82RTVqUHBCblJsZ3oreHdtcWdsN1pzd2xBblJBREFFUlhKdHpVeVFXNjhYSWhVNE56cAo="
     },
     "windows": [
       {

@@ -5,14 +5,27 @@ import { ProjectDetail } from './components/ProjectDetail';
 import { Settings } from './components/Settings';
 import { CreateProject } from './components/CreateProject';
 import { Notifications } from './components/Notifications';
+import { AboutModal } from './components/AboutModal';
 import { ProjectFormData } from './components/ProjectForm';
 import { useProjectStore, useSettingsStore, useUIStore } from './stores';
+import { useMenuEvents, useFileWatcher, useSystemTray } from './hooks';
 import { syncService } from './services/syncService';
 import { projectService } from './services/projectService';
 import { scrapingService } from './services/scrapingService';
 import { geminiService } from './services/geminiService';
 import { Project } from './types';
 import './styles/globals.css';
+
+function LoadingScreen() {
+  return (
+    <div className="loading-screen">
+      <div className="loading-content">
+        <div className="loading-spinner" />
+        <p>Chargement de La Forge...</p>
+      </div>
+    </div>
+  );
+}
 
 export function App() {
   // Stores
@@ -33,6 +46,8 @@ export function App() {
     folderStructure,
     updateSettings,
     markSaved,
+    isHydrated,
+    loadSettings,
   } = useSettingsStore();
 
   const {
@@ -42,12 +57,17 @@ export function App() {
     addNotification,
   } = useUIStore();
 
+  // Load settings from Tauri store on mount
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
   // Fetch projects on mount and when workspace changes
   useEffect(() => {
-    if (workspacePath) {
+    if (isHydrated && workspacePath) {
       fetchProjects(workspacePath);
     }
-  }, [workspacePath, fetchProjects]);
+  }, [isHydrated, workspacePath, fetchProjects]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -79,6 +99,79 @@ export function App() {
 
   // Get selected project from store
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
+
+  // Activate file watcher based on settings
+  useFileWatcher();
+
+  // System tray integration - show recent projects with Finder/Sync options
+  const { updateRecentProjects, onOpenFinder, onSyncProject } = useSystemTray();
+
+  // Update tray menu when projects change
+  useEffect(() => {
+    updateRecentProjects(projects);
+  }, [projects, updateRecentProjects]);
+
+  // Handle open finder from tray menu
+  useEffect(() => {
+    onOpenFinder((projectId) => {
+      const project = projects.find((p) => p.id === projectId);
+      if (project) {
+        projectService.openInFinder(project.path);
+      }
+    });
+  }, [projects, onOpenFinder]);
+
+  // Handle sync from tray menu
+  useEffect(() => {
+    onSyncProject((projectId) => {
+      const project = projects.find((p) => p.id === projectId);
+      if (project && project.sftp?.configured) {
+        handleSync(project);
+      }
+    });
+  }, [projects, onSyncProject]);
+
+  // Handle native macOS menu events
+  useMenuEvents({
+    onAbout: useCallback(() => {
+      openModal('about');
+    }, [openModal]),
+    onPreferences: useCallback(() => {
+      openModal('settings');
+    }, [openModal]),
+    onNewProject: useCallback(() => {
+      openModal('createProject');
+    }, [openModal]),
+    onRefresh: useCallback(() => {
+      if (workspacePath) {
+        fetchProjects(workspacePath);
+        addNotification('info', 'Liste des projets actualisée');
+      }
+    }, [workspacePath, fetchProjects, addNotification]),
+    onOpenFinder: useCallback(() => {
+      if (selectedProject) {
+        projectService.openInFinder(selectedProject.path);
+      }
+    }, [selectedProject]),
+    onOpenBrowser: useCallback(() => {
+      if (selectedProject?.urls.currentSite) {
+        projectService.openInBrowser(selectedProject.urls.currentSite);
+      } else if (selectedProject?.urls.production) {
+        projectService.openInBrowser(selectedProject.urls.production);
+      }
+    }, [selectedProject]),
+    onSync: useCallback(() => {
+      if (selectedProject && selectedProject.sftp.configured) {
+        handleSync(selectedProject);
+      }
+    }, [selectedProject]),
+    onScrape: useCallback(() => {
+      // Navigate to scraping tab if a project is selected
+      if (selectedProject) {
+        addNotification('info', 'Accédez à l\'onglet Scraping du projet pour lancer le scraping');
+      }
+    }, [selectedProject, addNotification]),
+  });
 
   const handleCreateProject = async (data: ProjectFormData) => {
     try {
@@ -165,6 +258,11 @@ export function App() {
     }
   };
 
+  // Show loading screen until settings are hydrated
+  if (!isHydrated) {
+    return <LoadingScreen />;
+  }
+
   return (
     <div className="app">
       <Sidebar
@@ -212,9 +310,12 @@ export function App() {
             geminiModel,
             folderStructure,
           }}
+          projects={projects}
           onUpdate={updateSettings}
           onSave={handleSaveSettings}
           onClose={closeModal}
+          onProjectsRefresh={() => fetchProjects(workspacePath)}
+          onNotification={addNotification}
         />
       )}
 
@@ -224,6 +325,10 @@ export function App() {
           onCreate={handleCreateProject}
           onClose={closeModal}
         />
+      )}
+
+      {activeModal === 'about' && (
+        <AboutModal onClose={closeModal} />
       )}
 
       <Notifications />

@@ -51,10 +51,21 @@ export interface SFTPInfo {
   passwordAvailable?: boolean;
 }
 
+export interface ScrapingStats {
+  pagesCount: number;
+  imagesCount: number;
+  textsCount: number;
+  colorsCount: number;
+  fontsCount: number;
+  colors: string[];        // Couleurs détectées
+  fonts: string[];         // Polices détectées
+}
+
 export interface ScrapingInfo {
   completed: boolean;
   sourceUrl?: string;
   scrapedAt?: string;
+  stats?: ScrapingStats;   // Statistiques détaillées du scraping
 }
 
 export interface SFTPConfig {

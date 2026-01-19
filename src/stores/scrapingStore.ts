@@ -6,6 +6,8 @@ import {
 } from '../services/documentationService';
 import { fileSystemService } from '../services/fileSystemService';
 import { geminiService } from '../services/geminiService';
+import { projectService } from '../services/projectService';
+import { Project, ScrapingStats } from '../types';
 
 type ScrapingStage =
   | 'idle'
@@ -43,6 +45,7 @@ interface ScrapingStore {
     projectPath: string;
     projectName: string;
     url: string;
+    project: Project; // Projet pour sauvegarde des stats
     options: {
       maxPages: number;
       downloadImages: boolean;
@@ -52,7 +55,7 @@ interface ScrapingStore {
     };
     geminiApiKey?: string;
     geminiModel?: string;
-    onComplete?: (result: ScrapeResult) => void;
+    onComplete?: (result: ScrapeResult, updatedProject: Project) => void;
   }) => Promise<void>;
   resetScraping: (projectId: string) => void;
 }
@@ -79,6 +82,7 @@ export const useScrapingStore = create<ScrapingStore>((set, get) => ({
     projectPath,
     projectName,
     url,
+    project,
     options,
     geminiApiKey,
     geminiModel,
@@ -164,10 +168,19 @@ export const useScrapingStore = create<ScrapingStore>((set, get) => ({
 
       if (options.improveTexts && geminiApiKey && scrapeResult.texts.length > 0) {
         updateState({ stage: 'improving', progressMessage: 'Amelioration des textes avec Gemini...', progress: 70 });
-        addLog(`Amelioration de ${scrapeResult.texts.length} textes avec Gemini...`, 'info');
+
+        // Limit texts to improve to avoid timeouts (max 50 texts)
+        const maxTextsToImprove = 50;
+        const textsToProcess = scrapeResult.texts.slice(0, maxTextsToImprove);
+
+        if (scrapeResult.texts.length > maxTextsToImprove) {
+          addLog(`Limitation a ${maxTextsToImprove} textes (sur ${scrapeResult.texts.length})`, 'info');
+        }
+
+        addLog(`Amelioration de ${textsToProcess.length} textes avec Gemini...`, 'info');
 
         try {
-          const textsToImprove = scrapeResult.texts.map((t) => ({
+          const textsToImprove = textsToProcess.map((t) => ({
             elementType: t.elementType || 'p',
             content: t.content,
           }));
@@ -179,18 +192,27 @@ export const useScrapingStore = create<ScrapingStore>((set, get) => ({
             geminiModel
           );
 
-          textsForDoc = improved.map((t) => ({
-            original: t.original,
-            improved: t.improved,
-          }));
-
-          addLog(`${improved.length} textes ameliores`, 'success');
+          // Only use improved texts if we got results
+          if (improved && improved.length > 0) {
+            textsForDoc = improved.map((t) => ({
+              original: t.original,
+              improved: t.improved,
+            }));
+            addLog(`${improved.length} textes ameliores`, 'success');
+          } else {
+            addLog('Aucun texte ameliore retourne', 'info');
+          }
         } catch (geminiError) {
           console.error('Gemini improvement error:', geminiError);
-          addLog('Erreur lors de l\'amelioration des textes', 'error');
+          const errorMessage = geminiError instanceof Error ? geminiError.message : 'Erreur inconnue';
+          addLog(`Erreur Gemini: ${errorMessage.substring(0, 100)}`, 'error');
+          addLog('Les textes originaux seront utilises', 'info');
         }
         updateState({ progress: 80 });
       } else {
+        if (options.improveTexts && !geminiApiKey) {
+          addLog('Cle API Gemini manquante - amelioration ignoree', 'info');
+        }
         updateState({ progress: 75 });
       }
 
@@ -206,9 +228,43 @@ export const useScrapingStore = create<ScrapingStore>((set, get) => ({
       });
 
       addLog(`Documentation generee: ${docPath}`, 'success');
+
+      // Sauvegarder les statistiques dans le projet
+      const scrapingStats: ScrapingStats = {
+        pagesCount: scrapeResult.pages.length,
+        imagesCount: scrapeResult.images.length,
+        textsCount: scrapeResult.texts.length,
+        colorsCount: scrapeResult.colors.length,
+        fontsCount: scrapeResult.fonts.length,
+        colors: scrapeResult.colors,
+        fonts: scrapeResult.fonts,
+      };
+
+      const updatedProject: Project = {
+        ...project,
+        scraping: {
+          completed: true,
+          sourceUrl: url,
+          scrapedAt: new Date().toISOString(),
+          stats: scrapingStats,
+        },
+        // Mettre à jour les couleurs et polices du projet si pas déjà définies
+        colors: project.colors?.length ? project.colors : scrapeResult.colors,
+        fonts: project.fonts?.length ? project.fonts : scrapeResult.fonts,
+        updated: new Date().toISOString(),
+      };
+
+      try {
+        await projectService.saveProject(updatedProject);
+        addLog('Statistiques sauvegardees dans le projet', 'success');
+      } catch (saveError) {
+        console.error('Error saving scraping stats:', saveError);
+        addLog('Erreur lors de la sauvegarde des statistiques', 'error');
+      }
+
       updateState({ progress: 100, stage: 'complete', progressMessage: 'Scraping termine !' });
 
-      onComplete?.(scrapeResult);
+      onComplete?.(scrapeResult, updatedProject);
     } catch (err) {
       console.error('Scraping error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';

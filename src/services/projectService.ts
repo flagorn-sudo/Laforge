@@ -234,7 +234,7 @@ body { font-family: system-ui, sans-serif; line-height: 1.6; }`
 
       await writeTextFile(
         await join(project.path, 'README.md'),
-        `# ${project.name}\n\n*Projet créé avec Forge*`
+        `# ${project.name}\n\n*Projet créé avec La Forge*`
       );
 
       await writeTextFile(
@@ -285,7 +285,7 @@ body { font-family: system-ui, sans-serif; line-height: 1.6; }`
 
     await writeTextFile(
       await join(project.path, 'README.md'),
-      `# ${project.name}\n\n*Projet créé avec Forge*`
+      `# ${project.name}\n\n*Projet créé avec La Forge*`
     );
 
     await writeTextFile(
