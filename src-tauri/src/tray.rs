@@ -136,3 +136,73 @@ pub fn tray_update_recent_projects(app: AppHandle, projects: Vec<RecentProject>)
 pub fn tray_is_available() -> bool {
     true
 }
+
+/// Tray icon state enum
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TrayIconState {
+    Normal,
+    Syncing,
+    Success,
+}
+
+/// Helper to load icon from file path
+fn load_icon_from_path(path: std::path::PathBuf) -> Option<tauri::Icon> {
+    if !path.exists() {
+        return None;
+    }
+
+    match std::fs::read(&path) {
+        Ok(bytes) => Some(tauri::Icon::Raw(bytes)),
+        Err(_) => None,
+    }
+}
+
+/// Set tray icon state with different visual indicators
+/// - normal: default icon
+/// - syncing: icon with sync indicator (blue/animated effect via tooltip)
+/// - success: icon with success indicator (green checkmark)
+#[tauri::command]
+pub fn tray_set_sync_indicator(app: AppHandle, state: String) -> Result<(), String> {
+    let tray_handle = app.tray_handle();
+
+    // Parse state string (for backwards compatibility, "true" = syncing, "false" = normal)
+    let icon_state = match state.as_str() {
+        "true" | "syncing" => TrayIconState::Syncing,
+        "false" | "normal" => TrayIconState::Normal,
+        "success" => TrayIconState::Success,
+        _ => TrayIconState::Normal,
+    };
+
+    match icon_state {
+        TrayIconState::Syncing => {
+            // Try to set syncing icon
+            if let Some(path) = app.path_resolver().resolve_resource("icons/tray-icon-syncing.png") {
+                if let Some(icon) = load_icon_from_path(path) {
+                    let _ = tray_handle.set_icon(icon);
+                }
+            }
+            let _ = tray_handle.set_tooltip("La Forge - Synchronisation en cours...");
+        }
+        TrayIconState::Success => {
+            // Try to set success icon
+            if let Some(path) = app.path_resolver().resolve_resource("icons/tray-icon-success.png") {
+                if let Some(icon) = load_icon_from_path(path) {
+                    let _ = tray_handle.set_icon(icon);
+                }
+            }
+            let _ = tray_handle.set_tooltip("La Forge - Synchronisation reussie!");
+        }
+        TrayIconState::Normal => {
+            // Restore normal icon
+            if let Some(path) = app.path_resolver().resolve_resource("icons/tray-icon.png") {
+                if let Some(icon) = load_icon_from_path(path) {
+                    let _ = tray_handle.set_icon(icon);
+                }
+            }
+            let _ = tray_handle.set_tooltip("La Forge");
+        }
+    }
+
+    Ok(())
+}

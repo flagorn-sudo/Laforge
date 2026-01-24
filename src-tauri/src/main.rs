@@ -3,7 +3,14 @@
 mod watcher;
 mod scraper;
 mod tray;
+mod parallel_sync;
+mod version_history;
+mod scheduler;
+mod transfer_resume;
+mod delta_sync;
+mod full_site_scraper;
 
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -12,11 +19,77 @@ use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{
     CustomMenuItem, Manager, Menu, MenuItem, State, Submenu, WindowMenuEvent,
 };
 use walkdir::WalkDir;
+
+// ============================================
+// Cancellation Flags for Sync Operations
+// ============================================
+
+static CANCEL_FLAGS: Lazy<Mutex<HashMap<String, bool>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+
+// ============================================
+// Cancellation Flags for Full Site Scraping
+// ============================================
+
+static SCRAPE_CANCEL_FLAGS: Lazy<Mutex<HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn get_or_create_scrape_cancel_flag(project_id: &str) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+    let mut flags = SCRAPE_CANCEL_FLAGS.lock().unwrap();
+    if let Some(flag) = flags.get(project_id) {
+        flag.clone()
+    } else {
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        flags.insert(project_id.to_string(), flag.clone());
+        flag
+    }
+}
+
+fn set_scrape_cancelled(project_id: &str, value: bool) {
+    if let Ok(flags) = SCRAPE_CANCEL_FLAGS.lock() {
+        if let Some(flag) = flags.get(project_id) {
+            flag.store(value, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+fn is_cancelled(project_id: &str) -> bool {
+    CANCEL_FLAGS
+        .lock()
+        .map(|flags| *flags.get(project_id).unwrap_or(&false))
+        .unwrap_or(false)
+}
+
+fn set_cancelled(project_id: &str, value: bool) {
+    if let Ok(mut flags) = CANCEL_FLAGS.lock() {
+        if value {
+            flags.insert(project_id.to_string(), true);
+        } else {
+            flags.remove(project_id);
+        }
+    }
+}
+
+// ============================================
+// Sync Progress Event Structure
+// ============================================
+
+#[derive(Clone, Serialize)]
+struct SyncProgressEvent {
+    project_id: String,
+    event: String, // "connecting", "file_start", "file_progress", "file_complete", "file_error", "complete", "error", "cancelled"
+    file: Option<String>,
+    progress: u32,           // 0-100 overall progress
+    file_progress: Option<u32>, // 0-100 for current file
+    bytes_sent: Option<u64>,
+    bytes_total: Option<u64>,
+    message: Option<String>,
+    timestamp: u64,
+}
 
 use watcher::FileWatcherManager;
 
@@ -48,6 +121,25 @@ struct SFTPConfig {
     #[serde(rename = "acceptInvalidCerts")]
     accept_invalid_certs: Option<bool>,
 }
+
+/// Sync options for configuring upload behavior
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SyncOptions {
+    /// Enable parallel uploads (default: true)
+    #[serde(default = "default_parallel_enabled")]
+    parallel_enabled: bool,
+    /// Number of parallel connections (default: 4, max: 8)
+    #[serde(default = "default_parallel_connections")]
+    parallel_connections: usize,
+    /// Create version snapshot before sync (default: false)
+    #[serde(default)]
+    create_snapshot: bool,
+    /// Snapshot message/description
+    snapshot_message: Option<String>,
+}
+
+fn default_parallel_enabled() -> bool { true }
+fn default_parallel_connections() -> usize { 4 }
 
 #[derive(Debug, Serialize)]
 struct FileEntry {
@@ -125,8 +217,10 @@ fn test_sftp_connection(config: &SFTPConfig) -> Result<bool, String> {
         .map_err(|e| format!("Connection failed: {}", e))?;
     println!("[Rust] test_sftp_connection: TCP connected");
 
-    tcp.set_read_timeout(Some(Duration::from_secs(30)))
-        .map_err(|e| format!("Failed to set timeout: {}", e))?;
+    tcp.set_read_timeout(Some(Duration::from_secs(60)))
+        .map_err(|e| format!("Failed to set read timeout: {}", e))?;
+    tcp.set_write_timeout(Some(Duration::from_secs(120)))
+        .map_err(|e| format!("Failed to set write timeout: {}", e))?;
 
     println!("[Rust] test_sftp_connection: creating SSH session...");
     let mut sess = ssh2::Session::new().map_err(|e| format!("Failed to create session: {}", e))?;
@@ -157,6 +251,15 @@ fn test_ftp_connection(config: &SFTPConfig) -> Result<bool, String> {
 
     let mut ftp = suppaftp::FtpStream::connect_timeout(addr, Duration::from_secs(10))
         .map_err(|e| format!("FTP connection failed: {}", e))?;
+
+    // Set timeouts on FTP connection
+    ftp.get_ref()
+        .set_read_timeout(Some(Duration::from_secs(60)))
+        .map_err(|e| format!("Failed to set read timeout: {}", e))?;
+    ftp.get_ref()
+        .set_write_timeout(Some(Duration::from_secs(120)))
+        .map_err(|e| format!("Failed to set write timeout: {}", e))?;
+
     println!("[Rust] test_ftp_connection: connected, logging in...");
 
     ftp.login(&config.username, &config.password)
@@ -495,30 +598,147 @@ fn sftp_sync(
     local_path: String,
     config: SFTPConfig,
     dry_run: bool,
+    project_id: String,
+    app_handle: tauri::AppHandle,
+    options: Option<SyncOptions>,
 ) -> Result<Vec<FileDiff>, String> {
+    // Clear any previous cancel flag
+    set_cancelled(&project_id, false);
+
+    let sync_options = options.unwrap_or_default();
+
+    // Helper to emit progress events
+    let emit_progress = |event: &str, file: Option<&str>, progress: u32, message: Option<&str>| {
+        let _ = app_handle.emit_all(
+            "sync-progress",
+            SyncProgressEvent {
+                project_id: project_id.clone(),
+                event: event.to_string(),
+                file: file.map(|s| s.to_string()),
+                progress,
+                file_progress: None,
+                bytes_sent: None,
+                bytes_total: None,
+                message: message.map(|s| s.to_string()),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+            },
+        );
+    };
+
+    emit_progress("connecting", None, 5, Some("Connexion au serveur..."));
+
+    // Create version snapshot if requested
+    if sync_options.create_snapshot && !dry_run {
+        if let Ok(app_dir) = app_handle.path_resolver().app_data_dir().ok_or("No app dir") {
+            let backup_dir = version_history::get_backup_dir(&app_dir, &project_id);
+            let backup_dir_str = backup_dir.to_string_lossy().to_string();
+
+            match version_history::create_snapshot(
+                &project_id,
+                &local_path,
+                Some(&backup_dir_str),
+                sync_options.snapshot_message.as_deref(),
+            ) {
+                Ok(snapshot) => {
+                    // Load existing history, add snapshot, save
+                    if let Ok(mut history) = version_history::load_history(&app_dir, &project_id) {
+                        history.add_snapshot(snapshot);
+                        let _ = version_history::save_history(&app_dir, &history);
+                    }
+                    emit_progress("snapshot", None, 8, Some("Snapshot créé"));
+                }
+                Err(e) => {
+                    println!("[Sync] Warning: Failed to create snapshot: {}", e);
+                }
+            }
+        }
+    }
+
     // Get diff first
+    emit_progress("analyzing", None, 10, Some("Analyse des fichiers..."));
     let diffs = sftp_get_diff(local_path.clone(), config.clone())?;
 
     if dry_run {
+        emit_progress("complete", None, 100, Some("Analyse terminée"));
         return Ok(diffs);
     }
 
-    // Perform actual sync
-    let protocol = config.protocol.as_deref().unwrap_or("ftp");
-
-    match protocol {
-        "sftp" => sync_sftp(&local_path, &config, &diffs)?,
-        "ftp" | "ftps" => sync_ftp(&local_path, &config, &diffs)?,
-        _ => return Err(format!("Unknown protocol: {}", protocol)),
+    // Check cancellation
+    if is_cancelled(&project_id) {
+        emit_progress("cancelled", None, 0, Some("Synchronisation annulée"));
+        return Err("Synchronisation annulée".to_string());
     }
 
-    Ok(diffs)
+    // Perform actual sync - use parallel or sequential based on options
+    let protocol = config.protocol.as_deref().unwrap_or("ftp");
+    let use_parallel = sync_options.parallel_enabled;
+    let max_connections = sync_options.parallel_connections.min(parallel_sync::MAX_PARALLEL_CONNECTIONS);
+
+    let result = if use_parallel {
+        // Use parallel sync
+        match protocol {
+            "sftp" => parallel_sync::parallel_sftp_sync(
+                &local_path, &config, &diffs, &project_id, &app_handle, max_connections
+            ),
+            "ftp" | "ftps" => parallel_sync::parallel_ftp_sync(
+                &local_path, &config, &diffs, &project_id, &app_handle, max_connections
+            ),
+            _ => Err(format!("Unknown protocol: {}", protocol)),
+        }
+    } else {
+        // Use sequential sync (original behavior)
+        match protocol {
+            "sftp" => sync_sftp_with_progress(&local_path, &config, &diffs, &project_id, &app_handle),
+            "ftp" | "ftps" => sync_ftp_with_progress(&local_path, &config, &diffs, &project_id, &app_handle),
+            _ => Err(format!("Unknown protocol: {}", protocol)),
+        }
+    };
+
+    // Clear cancel flag
+    set_cancelled(&project_id, false);
+
+    match result {
+        Ok(_) => {
+            emit_progress("complete", None, 100, Some("Synchronisation terminée"));
+            Ok(diffs)
+        }
+        Err(e) => {
+            if e.contains("annulée") || e.contains("cancelled") {
+                emit_progress("cancelled", None, 0, Some(&e));
+            } else {
+                emit_progress("error", None, 0, Some(&e));
+            }
+            Err(e)
+        }
+    }
 }
 
-fn sync_sftp(local_path: &str, config: &SFTPConfig, diffs: &[FileDiff]) -> Result<(), String> {
+#[tauri::command]
+fn sftp_cancel_sync(project_id: String) -> Result<(), String> {
+    println!("[Rust] sftp_cancel_sync called for project: {}", project_id);
+    set_cancelled(&project_id, true);
+    Ok(())
+}
+
+fn sync_sftp_with_progress(
+    local_path: &str,
+    config: &SFTPConfig,
+    diffs: &[FileDiff],
+    project_id: &str,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), String> {
     let addr = resolve_addr(&config.host, config.port)?;
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
+
+    // Set timeouts
+    tcp.set_read_timeout(Some(Duration::from_secs(60)))
+        .map_err(|e| format!("Failed to set read timeout: {}", e))?;
+    tcp.set_write_timeout(Some(Duration::from_secs(120)))
+        .map_err(|e| format!("Failed to set write timeout: {}", e))?;
 
     let mut sess = ssh2::Session::new().map_err(|e| format!("Session error: {}", e))?;
     sess.set_tcp_stream(tcp);
@@ -529,38 +749,132 @@ fn sync_sftp(local_path: &str, config: &SFTPConfig, diffs: &[FileDiff]) -> Resul
     let sftp = sess.sftp().map_err(|e| format!("SFTP error: {}", e))?;
     let remote_base = &config.remote_path;
 
-    for diff in diffs {
-        match diff.status.as_str() {
-            "added" | "modified" => {
-                let local_file = format!("{}/{}", local_path, diff.path);
-                let remote_file = format!("{}/{}", remote_base, diff.path);
+    // Filter to only files that need uploading
+    let files_to_upload: Vec<_> = diffs
+        .iter()
+        .filter(|d| d.status == "added" || d.status == "modified")
+        .collect();
 
-                // Create parent directories if needed
-                if let Some(parent) = Path::new(&remote_file).parent() {
-                    create_sftp_dirs(&sftp, parent)?;
-                }
+    let total_files = files_to_upload.len();
+    let mut completed = 0;
+    let mut errors: Vec<String> = Vec::new();
 
-                // Read local file
-                let mut file = File::open(&local_file)
-                    .map_err(|e| format!("Failed to open {}: {}", local_file, e))?;
-                let mut contents = Vec::new();
-                file.read_to_end(&mut contents)
-                    .map_err(|e| format!("Failed to read {}: {}", local_file, e))?;
-
-                // Write to remote
-                let mut remote = sftp
-                    .create(Path::new(&remote_file))
-                    .map_err(|e| format!("Failed to create {}: {}", remote_file, e))?;
-                remote
-                    .write_all(&contents)
-                    .map_err(|e| format!("Failed to write {}: {}", remote_file, e))?;
-            }
-            "deleted" => {
-                // Optionally delete remote files
-                // Currently skipping deletion for safety
-            }
-            _ => {}
+    for diff in &files_to_upload {
+        // Check cancellation
+        if is_cancelled(project_id) {
+            return Err("Synchronisation annulée".to_string());
         }
+
+        let local_file = format!("{}/{}", local_path, diff.path);
+        let remote_file = format!("{}/{}", remote_base, diff.path);
+        let file_size = diff.local_size.unwrap_or(0);
+
+        // Emit file start event
+        let progress = 20 + ((completed as u32 * 70) / total_files.max(1) as u32);
+        let _ = app_handle.emit_all(
+            "sync-progress",
+            SyncProgressEvent {
+                project_id: project_id.to_string(),
+                event: "file_start".to_string(),
+                file: Some(diff.path.clone()),
+                progress,
+                file_progress: Some(0),
+                bytes_sent: Some(0),
+                bytes_total: Some(file_size),
+                message: None,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+            },
+        );
+
+        // Create parent directories if needed
+        if let Some(parent) = Path::new(&remote_file).parent() {
+            let _ = create_sftp_dirs(&sftp, parent);
+        }
+
+        // Read and upload file
+        let result: Result<(), String> = (|| {
+            let mut file = File::open(&local_file)
+                .map_err(|e| format!("Failed to open {}: {}", local_file, e))?;
+            let mut contents = Vec::new();
+            file.read_to_end(&mut contents)
+                .map_err(|e| format!("Failed to read {}: {}", local_file, e))?;
+
+            let mut remote = sftp
+                .create(Path::new(&remote_file))
+                .map_err(|e| format!("Failed to create {}: {}", remote_file, e))?;
+            remote
+                .write_all(&contents)
+                .map_err(|e| format!("Failed to write {}: {}", remote_file, e))?;
+
+            Ok(())
+        })();
+
+        match result {
+            Ok(_) => {
+                completed += 1;
+                let progress = 20 + ((completed as u32 * 70) / total_files.max(1) as u32);
+
+                // Emit file complete event
+                let _ = app_handle.emit_all(
+                    "sync-progress",
+                    SyncProgressEvent {
+                        project_id: project_id.to_string(),
+                        event: "file_complete".to_string(),
+                        file: Some(diff.path.clone()),
+                        progress,
+                        file_progress: Some(100),
+                        bytes_sent: Some(file_size),
+                        bytes_total: Some(file_size),
+                        message: None,
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64,
+                    },
+                );
+            }
+            Err(e) => {
+                errors.push(format!("{}: {}", diff.path, e));
+
+                // Emit file error event
+                let _ = app_handle.emit_all(
+                    "sync-progress",
+                    SyncProgressEvent {
+                        project_id: project_id.to_string(),
+                        event: "file_error".to_string(),
+                        file: Some(diff.path.clone()),
+                        progress: 20 + ((completed as u32 * 70) / total_files.max(1) as u32),
+                        file_progress: Some(0),
+                        bytes_sent: None,
+                        bytes_total: Some(file_size),
+                        message: Some(e),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64,
+                    },
+                );
+
+                // After 3 consecutive errors, stop
+                if errors.len() >= 3 {
+                    return Err(format!(
+                        "Arrêt après 3 erreurs. Dernière erreur: {}",
+                        errors.last().unwrap_or(&String::new())
+                    ));
+                }
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        return Err(format!(
+            "{} fichier(s) en erreur: {}",
+            errors.len(),
+            errors.join(", ")
+        ));
     }
 
     Ok(())
@@ -576,12 +890,26 @@ fn create_sftp_dirs(sftp: &ssh2::Sftp, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn sync_ftp(local_path: &str, config: &SFTPConfig, diffs: &[FileDiff]) -> Result<(), String> {
+fn sync_ftp_with_progress(
+    local_path: &str,
+    config: &SFTPConfig,
+    diffs: &[FileDiff],
+    project_id: &str,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), String> {
     let addr = resolve_addr(&config.host, config.port)?;
     let passive = config.passive.unwrap_or(true);
 
     let mut ftp = suppaftp::FtpStream::connect_timeout(addr, Duration::from_secs(10))
         .map_err(|e| format!("FTP connection failed: {}", e))?;
+
+    // Set timeouts
+    ftp.get_ref()
+        .set_read_timeout(Some(Duration::from_secs(60)))
+        .map_err(|e| format!("Failed to set read timeout: {}", e))?;
+    ftp.get_ref()
+        .set_write_timeout(Some(Duration::from_secs(120)))
+        .map_err(|e| format!("Failed to set write timeout: {}", e))?;
 
     ftp.login(&config.username, &config.password)
         .map_err(|e| format!("FTP login failed: {}", e))?;
@@ -595,38 +923,135 @@ fn sync_ftp(local_path: &str, config: &SFTPConfig, diffs: &[FileDiff]) -> Result
 
     let remote_base = &config.remote_path;
 
-    for diff in diffs {
-        match diff.status.as_str() {
-            "added" | "modified" => {
-                let local_file = format!("{}/{}", local_path, diff.path);
-                let remote_file = format!("{}/{}", remote_base, diff.path);
+    // Filter to only files that need uploading
+    let files_to_upload: Vec<_> = diffs
+        .iter()
+        .filter(|d| d.status == "added" || d.status == "modified")
+        .collect();
 
-                // Create parent directories if needed
-                if let Some(parent) = Path::new(&diff.path).parent() {
-                    create_ftp_dirs(&mut ftp, remote_base, parent)?;
+    let total_files = files_to_upload.len();
+    let mut completed = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    for diff in &files_to_upload {
+        // Check cancellation
+        if is_cancelled(project_id) {
+            let _ = ftp.quit();
+            return Err("Synchronisation annulée".to_string());
+        }
+
+        let local_file = format!("{}/{}", local_path, diff.path);
+        let remote_file = format!("{}/{}", remote_base, diff.path);
+        let file_size = diff.local_size.unwrap_or(0);
+
+        // Emit file start event
+        let progress = 20 + ((completed as u32 * 70) / total_files.max(1) as u32);
+        let _ = app_handle.emit_all(
+            "sync-progress",
+            SyncProgressEvent {
+                project_id: project_id.to_string(),
+                event: "file_start".to_string(),
+                file: Some(diff.path.clone()),
+                progress,
+                file_progress: Some(0),
+                bytes_sent: Some(0),
+                bytes_total: Some(file_size),
+                message: None,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+            },
+        );
+
+        // Create parent directories if needed
+        if let Some(parent) = Path::new(&diff.path).parent() {
+            let _ = create_ftp_dirs(&mut ftp, remote_base, parent);
+        }
+
+        // Read and upload file
+        let result: Result<(), String> = (|| {
+            let mut file = File::open(&local_file)
+                .map_err(|e| format!("Failed to open {}: {}", local_file, e))?;
+            let mut contents = Vec::new();
+            file.read_to_end(&mut contents)
+                .map_err(|e| format!("Failed to read {}: {}", local_file, e))?;
+
+            let mut cursor = std::io::Cursor::new(contents);
+            ftp.put_file(&remote_file, &mut cursor)
+                .map_err(|e| format!("Failed to upload {}: {}", remote_file, e))?;
+
+            Ok(())
+        })();
+
+        match result {
+            Ok(_) => {
+                completed += 1;
+                let progress = 20 + ((completed as u32 * 70) / total_files.max(1) as u32);
+
+                // Emit file complete event
+                let _ = app_handle.emit_all(
+                    "sync-progress",
+                    SyncProgressEvent {
+                        project_id: project_id.to_string(),
+                        event: "file_complete".to_string(),
+                        file: Some(diff.path.clone()),
+                        progress,
+                        file_progress: Some(100),
+                        bytes_sent: Some(file_size),
+                        bytes_total: Some(file_size),
+                        message: None,
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64,
+                    },
+                );
+            }
+            Err(e) => {
+                errors.push(format!("{}: {}", diff.path, e));
+
+                // Emit file error event
+                let _ = app_handle.emit_all(
+                    "sync-progress",
+                    SyncProgressEvent {
+                        project_id: project_id.to_string(),
+                        event: "file_error".to_string(),
+                        file: Some(diff.path.clone()),
+                        progress: 20 + ((completed as u32 * 70) / total_files.max(1) as u32),
+                        file_progress: Some(0),
+                        bytes_sent: None,
+                        bytes_total: Some(file_size),
+                        message: Some(e),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64,
+                    },
+                );
+
+                // After 3 consecutive errors, stop
+                if errors.len() >= 3 {
+                    let _ = ftp.quit();
+                    return Err(format!(
+                        "Arrêt après 3 erreurs. Dernière erreur: {}",
+                        errors.last().unwrap_or(&String::new())
+                    ));
                 }
-
-                // Read local file
-                let mut file = File::open(&local_file)
-                    .map_err(|e| format!("Failed to open {}: {}", local_file, e))?;
-                let mut contents = Vec::new();
-                file.read_to_end(&mut contents)
-                    .map_err(|e| format!("Failed to read {}: {}", local_file, e))?;
-
-                // Upload to remote
-                let mut cursor = std::io::Cursor::new(contents);
-                ftp.put_file(&remote_file, &mut cursor)
-                    .map_err(|e| format!("Failed to upload {}: {}", remote_file, e))?;
             }
-            "deleted" => {
-                // Optionally delete remote files
-                // Currently skipping deletion for safety
-            }
-            _ => {}
         }
     }
 
     let _ = ftp.quit();
+
+    if !errors.is_empty() {
+        return Err(format!(
+            "{} fichier(s) en erreur: {}",
+            errors.len(),
+            errors.join(", ")
+        ));
+    }
+
     Ok(())
 }
 
@@ -1131,6 +1556,586 @@ fn scrape_website(config: ScrapeConfigInput) -> Result<scraper::ScrapeResult, St
     scraper::scrape_website(scrape_config)
 }
 
+// Scraping event for real-time progress
+#[derive(Debug, Clone, Serialize)]
+struct ScrapeProgressEvent {
+    project_id: String,
+    event_type: String, // "page_start", "page_complete", "image_download", "css_download", "complete", "error"
+    url: Option<String>,
+    title: Option<String>,
+    pages_scraped: usize,
+    pages_total: usize,
+    images_downloaded: usize,
+    css_downloaded: usize,
+    progress: f32,
+    message: String,
+}
+
+#[tauri::command]
+async fn scrape_website_with_events(
+    config: ScrapeConfigInput,
+    project_id: String,
+    window: tauri::Window,
+) -> Result<scraper::ScrapeResult, String> {
+    use std::sync::mpsc;
+    use std::thread;
+
+    let scrape_config = scraper::ScrapeConfig {
+        url: config.url.clone(),
+        output_path: config.output_path.clone(),
+        max_pages: config.max_pages,
+        download_images: config.download_images,
+        download_css: config.download_css,
+        extract_text: config.extract_text,
+    };
+
+    let project_id_for_callback = project_id.clone();
+    let window_for_receiver = window.clone();
+
+    // Create a channel to send progress events from the scraping thread
+    let (tx, rx) = mpsc::channel::<scraper::ScrapeProgress>();
+
+    // Spawn the scraping task in a separate thread
+    let scraping_handle = thread::spawn(move || {
+        scraper::scrape_website_with_callback(scrape_config, |progress| {
+            // Send progress through channel
+            let _ = tx.send(progress);
+        })
+    });
+
+    // Process events from the channel in the async context
+    let event_processor = tokio::task::spawn_blocking(move || {
+        while let Ok(progress) = rx.recv() {
+            let _ = window_for_receiver.emit("scrape-progress", ScrapeProgressEvent {
+                project_id: project_id_for_callback.clone(),
+                event_type: progress.event_type,
+                url: progress.url,
+                title: progress.title,
+                pages_scraped: progress.pages_scraped,
+                pages_total: progress.pages_total,
+                images_downloaded: progress.images_downloaded,
+                css_downloaded: progress.css_downloaded,
+                progress: progress.progress_percent,
+                message: progress.message,
+            });
+        }
+    });
+
+    // Wait for scraping to complete
+    let result = scraping_handle.join()
+        .map_err(|_| "Scraping thread panicked".to_string())?;
+
+    // Wait for event processor to finish
+    let _ = event_processor.await;
+
+    result
+}
+
+// ============================================
+// Full Site Scraper Commands
+// ============================================
+
+#[derive(Debug, Clone, Deserialize)]
+struct FullScrapeConfigInput {
+    url: String,
+    #[serde(rename = "outputPath")]
+    output_path: String,
+    #[serde(rename = "maxPages", default = "default_max_pages")]
+    max_pages: u32,
+    #[serde(rename = "downloadImages", default = "default_true")]
+    download_images: bool,
+    #[serde(rename = "downloadCss", default = "default_true")]
+    download_css: bool,
+    #[serde(rename = "downloadJs", default = "default_true")]
+    download_js: bool,
+    #[serde(rename = "downloadFonts", default = "default_true")]
+    download_fonts: bool,
+    #[serde(rename = "rewriteUrls", default = "default_true")]
+    rewrite_urls: bool,
+    #[serde(rename = "generateReport", default = "default_true")]
+    generate_report: bool,
+}
+
+fn default_max_pages() -> u32 { 100 }
+fn default_true() -> bool { true }
+
+#[tauri::command]
+fn scrape_full_site(config: FullScrapeConfigInput) -> Result<full_site_scraper::FullScrapeResult, String> {
+    let scrape_config = full_site_scraper::FullScrapeConfig {
+        url: config.url,
+        output_path: config.output_path,
+        max_pages: config.max_pages,
+        download_images: config.download_images,
+        download_css: config.download_css,
+        download_js: config.download_js,
+        download_fonts: config.download_fonts,
+        rewrite_urls: config.rewrite_urls,
+        generate_report: config.generate_report,
+    };
+
+    full_site_scraper::scrape_full_site(scrape_config)
+}
+
+#[tauri::command]
+async fn scrape_full_site_with_events(
+    config: FullScrapeConfigInput,
+    project_id: String,
+    window: tauri::Window,
+) -> Result<full_site_scraper::FullScrapeResult, String> {
+    use std::sync::mpsc;
+    use std::thread;
+
+    let scrape_config = full_site_scraper::FullScrapeConfig {
+        url: config.url.clone(),
+        output_path: config.output_path.clone(),
+        max_pages: config.max_pages,
+        download_images: config.download_images,
+        download_css: config.download_css,
+        download_js: config.download_js,
+        download_fonts: config.download_fonts,
+        rewrite_urls: config.rewrite_urls,
+        generate_report: config.generate_report,
+    };
+
+    // Get or create cancel flag for this project
+    let cancel_flag = get_or_create_scrape_cancel_flag(&project_id);
+    // Reset the cancel flag before starting
+    cancel_flag.store(false, std::sync::atomic::Ordering::Relaxed);
+
+    let project_id_for_callback = project_id.clone();
+    let window_for_receiver = window.clone();
+
+    // Create a channel to send progress events from the scraping thread
+    let (tx, rx) = mpsc::channel::<full_site_scraper::FullScrapeProgress>();
+
+    // Spawn the scraping task in a separate thread
+    let scraping_handle = thread::spawn(move || {
+        full_site_scraper::scrape_full_site_with_callback(
+            scrape_config,
+            &project_id_for_callback,
+            cancel_flag,
+            |progress| {
+                // Send progress through channel
+                let _ = tx.send(progress);
+            },
+        )
+    });
+
+    // Process events from the channel in the async context
+    let event_processor = tokio::task::spawn_blocking(move || {
+        while let Ok(progress) = rx.recv() {
+            let _ = window_for_receiver.emit("full-scrape-progress", &progress);
+        }
+    });
+
+    // Wait for scraping to complete
+    let result = scraping_handle.join()
+        .map_err(|_| "Scraping thread panicked".to_string())?;
+
+    // Wait for event processor to finish
+    let _ = event_processor.await;
+
+    result
+}
+
+#[tauri::command]
+fn cancel_full_site_scrape(project_id: String) -> Result<(), String> {
+    println!("[Rust] cancel_full_site_scrape called for project: {}", project_id);
+    set_scrape_cancelled(&project_id, true);
+    Ok(())
+}
+
+// ============================================
+// Version History Commands
+// ============================================
+
+#[tauri::command]
+fn create_version_snapshot(
+    project_id: String,
+    local_path: String,
+    message: Option<String>,
+    app_handle: tauri::AppHandle,
+) -> Result<version_history::SyncSnapshot, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let backup_dir = version_history::get_backup_dir(&app_dir, &project_id);
+    let backup_dir_str = backup_dir.to_string_lossy().to_string();
+
+    let snapshot = version_history::create_snapshot(
+        &project_id,
+        &local_path,
+        Some(&backup_dir_str),
+        message.as_deref(),
+    )?;
+
+    // Save to history
+    let mut history = version_history::load_history(&app_dir, &project_id)?;
+    history.add_snapshot(snapshot.clone());
+    version_history::save_history(&app_dir, &history)?;
+
+    Ok(snapshot)
+}
+
+#[tauri::command]
+fn get_version_history(
+    project_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<version_history::SnapshotSummary>, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let history = version_history::load_history(&app_dir, &project_id)?;
+    Ok(history.list_snapshots())
+}
+
+#[tauri::command]
+fn get_snapshot_details(
+    project_id: String,
+    snapshot_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<Option<version_history::SyncSnapshot>, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let history = version_history::load_history(&app_dir, &project_id)?;
+    Ok(history.get_snapshot(&snapshot_id).cloned())
+}
+
+#[tauri::command]
+fn restore_version(
+    project_id: String,
+    snapshot_id: String,
+    target_path: String,
+    files: Option<Vec<String>>,
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let history = version_history::load_history(&app_dir, &project_id)?;
+    let snapshot = history
+        .get_snapshot(&snapshot_id)
+        .ok_or("Snapshot not found")?;
+
+    version_history::restore_snapshot(snapshot, &target_path, files)
+}
+
+#[tauri::command]
+fn compare_snapshots(
+    project_id: String,
+    old_snapshot_id: String,
+    new_snapshot_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<version_history::SnapshotDiff, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let history = version_history::load_history(&app_dir, &project_id)?;
+
+    let old_snapshot = history
+        .get_snapshot(&old_snapshot_id)
+        .ok_or("Old snapshot not found")?;
+    let new_snapshot = history
+        .get_snapshot(&new_snapshot_id)
+        .ok_or("New snapshot not found")?;
+
+    Ok(version_history::compare_snapshots(old_snapshot, new_snapshot))
+}
+
+// ============================================
+// Scheduler Commands
+// ============================================
+
+#[tauri::command]
+fn start_sync_scheduler(app_handle: tauri::AppHandle) -> Result<(), String> {
+    scheduler::start_scheduler(app_handle);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_sync_scheduler() -> Result<(), String> {
+    scheduler::stop_scheduler();
+    Ok(())
+}
+
+#[tauri::command]
+fn set_sync_schedule(schedule: scheduler::SyncSchedule) -> Result<scheduler::SyncSchedule, String> {
+    scheduler::set_schedule(schedule)
+}
+
+#[tauri::command]
+fn remove_sync_schedule(project_id: String) -> Result<(), String> {
+    scheduler::remove_schedule(&project_id)
+}
+
+#[tauri::command]
+fn get_sync_schedule(project_id: String) -> Result<Option<scheduler::SyncSchedule>, String> {
+    Ok(scheduler::get_schedule(&project_id))
+}
+
+#[tauri::command]
+fn get_all_sync_schedules() -> Result<Vec<scheduler::SyncSchedule>, String> {
+    Ok(scheduler::get_all_schedules())
+}
+
+#[tauri::command]
+fn set_schedule_enabled(project_id: String, enabled: bool) -> Result<(), String> {
+    scheduler::set_schedule_enabled(&project_id, enabled)
+}
+
+#[tauri::command]
+fn update_schedule_result(project_id: String, result: scheduler::ScheduleResult) -> Result<(), String> {
+    scheduler::update_schedule_result(&project_id, result);
+    Ok(())
+}
+
+// ============================================
+// Transfer Resume Commands
+// ============================================
+
+#[tauri::command]
+fn get_transfer_session(
+    project_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<Option<transfer_resume::TransferSession>, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let store = transfer_resume::load_sessions(&app_dir)?;
+    Ok(store.get_session(&project_id).cloned())
+}
+
+#[tauri::command]
+fn create_transfer_session(
+    project_id: String,
+    files: Vec<(String, String, String, u64)>, // (path, local_path, remote_path, size)
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let mut store = transfer_resume::load_sessions(&app_dir)?;
+    let session_id = store.create_session(&project_id);
+
+    if let Some(session) = store.sessions.get_mut(&session_id) {
+        for (path, local_path, remote_path, size) in files {
+            session.add_file(&path, &local_path, &remote_path, size);
+        }
+    }
+
+    transfer_resume::save_sessions(&app_dir, &store)?;
+    Ok(session_id)
+}
+
+#[tauri::command]
+fn update_transfer_progress(
+    session_id: String,
+    file_path: String,
+    transferred: u64,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let mut store = transfer_resume::load_sessions(&app_dir)?;
+
+    if let Some(session) = store.sessions.get_mut(&session_id) {
+        session.update_progress(&file_path, transferred);
+        transfer_resume::save_sessions(&app_dir, &store)?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn complete_transfer_file(
+    session_id: String,
+    file_path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let mut store = transfer_resume::load_sessions(&app_dir)?;
+
+    if let Some(session) = store.sessions.get_mut(&session_id) {
+        session.mark_completed(&file_path);
+        transfer_resume::save_sessions(&app_dir, &store)?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn complete_transfer_session(
+    session_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let mut store = transfer_resume::load_sessions(&app_dir)?;
+    store.complete_session(&session_id);
+    store.cleanup_old_sessions(24); // Clean up sessions older than 24 hours
+    transfer_resume::save_sessions(&app_dir, &store)?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_resumable_files(
+    project_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<transfer_resume::FileTransferState>, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let store = transfer_resume::load_sessions(&app_dir)?;
+
+    Ok(store
+        .get_session(&project_id)
+        .map(|s| s.get_resumable_files().into_iter().cloned().collect())
+        .unwrap_or_default())
+}
+
+// ============================================
+// Delta Sync Commands
+// ============================================
+
+#[tauri::command]
+fn analyze_delta_sync(
+    project_id: String,
+    local_path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<delta_sync::FileDelta>, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let cache = delta_sync::load_cache(&app_dir, &project_id)?;
+    delta_sync::analyze_delta_sync(&local_path, &cache)
+}
+
+#[tauri::command]
+fn get_delta_transfer_stats(
+    deltas: Vec<delta_sync::FileDelta>,
+) -> Result<delta_sync::DeltaTransferStats, String> {
+    Ok(delta_sync::calculate_transfer_stats(&deltas))
+}
+
+#[tauri::command]
+fn update_delta_cache_after_sync(
+    project_id: String,
+    local_path: String,
+    synced_files: Vec<String>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    delta_sync::update_cache_after_sync(&app_dir, &project_id, &local_path, &synced_files)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn generate_file_signature(
+    file_path: String,
+    relative_path: String,
+) -> Result<delta_sync::FileSignature, String> {
+    let path = Path::new(&file_path);
+    delta_sync::generate_file_signature(path, &relative_path)
+}
+
+#[tauri::command]
+fn get_delta_cache_info(
+    project_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<delta_sync::SignatureCache, String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    delta_sync::load_cache(&app_dir, &project_id)
+}
+
+#[tauri::command]
+fn clear_delta_cache(
+    project_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let app_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or("Could not get app data directory")?;
+
+    let cache = delta_sync::SignatureCache::new(&project_id);
+    delta_sync::save_cache(&app_dir, &cache)
+}
+
+// ============================================
+// Sync Configuration Commands
+// ============================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SyncConfig {
+    parallel_enabled: bool,
+    parallel_connections: usize,
+    auto_snapshot: bool,
+}
+
+static SYNC_CONFIG: Lazy<Mutex<SyncConfig>> = Lazy::new(|| {
+    Mutex::new(SyncConfig {
+        parallel_enabled: true,
+        parallel_connections: 4,
+        auto_snapshot: false,
+    })
+});
+
+#[tauri::command]
+fn get_sync_config() -> Result<SyncConfig, String> {
+    SYNC_CONFIG
+        .lock()
+        .map(|c| c.clone())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_sync_config(config: SyncConfig) -> Result<(), String> {
+    if let Ok(mut current) = SYNC_CONFIG.lock() {
+        *current = config;
+        Ok(())
+    } else {
+        Err("Failed to update sync config".to_string())
+    }
+}
+
 // Autostart commands using macOS LaunchAgent
 const LAUNCH_AGENT_LABEL: &str = "com.forge.autostart";
 
@@ -1386,6 +2391,7 @@ fn main() {
             sftp_list_files,
             sftp_get_diff,
             sftp_sync,
+            sftp_cancel_sync,
             save_password,
             get_password,
             delete_password,
@@ -1404,11 +2410,48 @@ fn main() {
             rename_item,
             move_item,
             create_project_structure,
-            // Scraping command
+            // Scraping commands
             scrape_website,
+            scrape_website_with_events,
+            scrape_full_site,
+            scrape_full_site_with_events,
+            cancel_full_site_scrape,
             // System tray commands
             tray::tray_update_recent_projects,
-            tray::tray_is_available
+            tray::tray_is_available,
+            tray::tray_set_sync_indicator,
+            // Version history commands
+            create_version_snapshot,
+            get_version_history,
+            get_snapshot_details,
+            restore_version,
+            compare_snapshots,
+            // Scheduler commands
+            start_sync_scheduler,
+            stop_sync_scheduler,
+            set_sync_schedule,
+            remove_sync_schedule,
+            get_sync_schedule,
+            get_all_sync_schedules,
+            set_schedule_enabled,
+            update_schedule_result,
+            // Sync configuration commands
+            get_sync_config,
+            set_sync_config,
+            // Transfer resume commands
+            get_transfer_session,
+            create_transfer_session,
+            update_transfer_progress,
+            complete_transfer_file,
+            complete_transfer_session,
+            get_resumable_files,
+            // Delta sync commands
+            analyze_delta_sync,
+            get_delta_transfer_stats,
+            update_delta_cache_after_sync,
+            generate_file_signature,
+            get_delta_cache_info,
+            clear_delta_cache
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

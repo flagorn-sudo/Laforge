@@ -1,6 +1,23 @@
 import { create } from 'zustand';
-import { Settings, DEFAULT_FOLDER_STRUCTURE, AutoOrganizeSettings } from '../types';
+import { Settings, DEFAULT_FOLDER_STRUCTURE, AutoOrganizeSettings, FilterPreferences } from '../types';
 import { settingsService } from '../services/settingsService';
+
+// Debounce utility to prevent race conditions on rapid settings changes
+function debounce<T extends (...args: unknown[]) => unknown>(
+  fn: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), delay);
+  };
+}
+
+// Debounced save function - 500ms delay to batch rapid changes
+const debouncedSave = debounce(() => {
+  useSettingsStore.getState().saveSettings();
+}, 500);
 
 interface SettingsState extends Settings {
   hasChanges: boolean;
@@ -13,18 +30,26 @@ interface SettingsState extends Settings {
   setGeminiModel: (model: string) => void;
   setFolderStructure: (structure: string[]) => void;
   setAutoOrganize: (settings: Partial<AutoOrganizeSettings>) => void;
+  setViewMode: (mode: 'grid' | 'list') => void;
   resetToDefaults: () => void;
   markSaved: () => void;
 
   // Hydration
   loadSettings: () => Promise<void>;
   saveSettings: () => Promise<void>;
+  saveSettingsImmediate: () => Promise<void>; // Force save without debounce
 }
 
 const DEFAULT_AUTO_ORGANIZE: AutoOrganizeSettings = {
   enabled: false,
   autoMove: false,
   confidenceThreshold: 70,
+};
+
+const DEFAULT_FILTER_PREFERENCES: FilterPreferences = {
+  filterBarOpen: false,
+  statusFilters: [],
+  sortBy: 'name',
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -34,6 +59,8 @@ const DEFAULT_SETTINGS: Settings = {
   folderStructure: DEFAULT_FOLDER_STRUCTURE,
   autoOrganize: DEFAULT_AUTO_ORGANIZE,
   showMenuBarIcon: true,
+  viewMode: 'grid',
+  filterPreferences: DEFAULT_FILTER_PREFERENCES,
 };
 
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
@@ -47,28 +74,28 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       ...partial,
       hasChanges: true,
     }));
-    // Auto-save to Tauri store
-    get().saveSettings();
+    // Auto-save with debounce to prevent race conditions
+    debouncedSave();
   },
 
   setWorkspacePath: (path) => {
     set({ workspacePath: path, hasChanges: true });
-    get().saveSettings();
+    debouncedSave();
   },
 
   setGeminiApiKey: (key) => {
     set({ geminiApiKey: key, hasChanges: true });
-    get().saveSettings();
+    debouncedSave();
   },
 
   setGeminiModel: (model) => {
     set({ geminiModel: model, hasChanges: true });
-    get().saveSettings();
+    debouncedSave();
   },
 
   setFolderStructure: (structure) => {
     set({ folderStructure: structure, hasChanges: true });
-    get().saveSettings();
+    debouncedSave();
   },
 
   setAutoOrganize: (settings) => {
@@ -80,12 +107,17 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       },
       hasChanges: true,
     }));
-    get().saveSettings();
+    debouncedSave();
+  },
+
+  setViewMode: (mode) => {
+    set({ viewMode: mode, hasChanges: true });
+    debouncedSave();
   },
 
   resetToDefaults: () => {
     set({ ...DEFAULT_SETTINGS, hasChanges: true });
-    get().saveSettings();
+    debouncedSave();
   },
 
   markSaved: () => set({ hasChanges: false }),
@@ -114,11 +146,36 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       folderStructure: state.folderStructure,
       autoOrganize: state.autoOrganize,
       showMenuBarIcon: state.showMenuBarIcon,
+      viewMode: state.viewMode,
+      filterPreferences: state.filterPreferences,
     };
     try {
       await settingsService.saveSettings(settings);
     } catch (error) {
       console.error('[settingsStore] Failed to save settings:', error);
+    }
+  },
+
+  // Force immediate save (bypasses debounce) - use for critical operations like backup restore
+  saveSettingsImmediate: async () => {
+    const state = get();
+    const settings: Settings = {
+      workspacePath: state.workspacePath,
+      geminiApiKey: state.geminiApiKey,
+      geminiModel: state.geminiModel,
+      folderStructure: state.folderStructure,
+      autoOrganize: state.autoOrganize,
+      showMenuBarIcon: state.showMenuBarIcon,
+      viewMode: state.viewMode,
+      filterPreferences: state.filterPreferences,
+    };
+    try {
+      console.log('[settingsStore] Force saving settings immediately...');
+      await settingsService.saveSettings(settings);
+      console.log('[settingsStore] Settings saved immediately, workspacePath:', state.workspacePath);
+    } catch (error) {
+      console.error('[settingsStore] Failed to save settings immediately:', error);
+      throw error;
     }
   },
 }));

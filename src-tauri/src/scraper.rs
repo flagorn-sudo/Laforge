@@ -197,6 +197,218 @@ impl Scraper {
         Ok(result)
     }
 
+    /// Scrape with progress callback for real-time updates
+    pub fn scrape_with_callback<F>(&mut self, on_progress: &mut F) -> Result<ScrapeResult, String>
+    where
+        F: FnMut(ScrapeProgress),
+    {
+        let mut result = ScrapeResult {
+            pages: Vec::new(),
+            images: Vec::new(),
+            stylesheets: Vec::new(),
+            fonts: Vec::new(),
+            colors: HashSet::new().into_iter().collect(),
+            texts: Vec::new(),
+            site_structure: Vec::new(),
+            errors: Vec::new(),
+        };
+
+        let mut colors_set: HashSet<String> = HashSet::new();
+        let mut fonts_set: HashSet<String> = HashSet::new();
+        let mut urls_to_visit = vec![self.config.url.clone()];
+        let max_pages = self.config.max_pages.unwrap_or(50) as usize;
+
+        // Create output directories
+        let base_output = Path::new(&self.config.output_path);
+        let scraped_dir = base_output.join("scraped");
+        let images_dir = scraped_dir.join("images");
+        let css_dir = scraped_dir.join("css");
+        let texts_dir = scraped_dir.join("texts");
+
+        fs::create_dir_all(&images_dir).ok();
+        fs::create_dir_all(&css_dir).ok();
+        fs::create_dir_all(&texts_dir).ok();
+
+        let mut images_count = 0usize;
+        let mut css_count = 0usize;
+
+        // Emit start event
+        on_progress(ScrapeProgress {
+            event_type: "start".to_string(),
+            url: Some(self.config.url.clone()),
+            title: None,
+            pages_scraped: 0,
+            pages_total: max_pages,
+            images_downloaded: 0,
+            css_downloaded: 0,
+            progress_percent: 0.0,
+            message: format!("Demarrage du scraping de {}", self.config.url),
+        });
+
+        while let Some(url) = urls_to_visit.pop() {
+            if self.visited_urls.len() >= max_pages {
+                break;
+            }
+
+            if self.visited_urls.contains(&url) {
+                continue;
+            }
+
+            // Only visit pages from the same domain
+            if let Ok(parsed_url) = Url::parse(&url) {
+                if parsed_url.host_str() != self.base_url.host_str() {
+                    continue;
+                }
+            }
+
+            self.visited_urls.insert(url.clone());
+
+            // Emit page start event
+            let progress = (self.visited_urls.len() as f32 / max_pages as f32 * 100.0).min(100.0);
+            on_progress(ScrapeProgress {
+                event_type: "page_start".to_string(),
+                url: Some(url.clone()),
+                title: None,
+                pages_scraped: self.visited_urls.len(),
+                pages_total: max_pages,
+                images_downloaded: images_count,
+                css_downloaded: css_count,
+                progress_percent: progress,
+                message: format!("Scraping: {}", url),
+            });
+
+            match self.scrape_page(&url) {
+                Ok(page_result) => {
+                    let page_title = page_result.page.title.clone();
+                    result.pages.push(page_result.page);
+
+                    // Add new URLs to visit
+                    for link in &page_result.links {
+                        if !self.visited_urls.contains(&link.to_page) {
+                            urls_to_visit.push(link.to_page.clone());
+                        }
+                    }
+                    result.site_structure.extend(page_result.links);
+
+                    // Process images
+                    if self.config.download_images {
+                        for image_url in page_result.images {
+                            match self.download_asset(&image_url, &images_dir, "image") {
+                                Ok(asset) => {
+                                    result.images.push(asset);
+                                    images_count += 1;
+                                    on_progress(ScrapeProgress {
+                                        event_type: "image_download".to_string(),
+                                        url: Some(image_url),
+                                        title: None,
+                                        pages_scraped: self.visited_urls.len(),
+                                        pages_total: max_pages,
+                                        images_downloaded: images_count,
+                                        css_downloaded: css_count,
+                                        progress_percent: progress,
+                                        message: format!("Image telechargee: {}", images_count),
+                                    });
+                                }
+                                Err(e) => result.errors.push(e),
+                            }
+                        }
+                    }
+
+                    // Process CSS and extract colors/fonts
+                    if self.config.download_css {
+                        for css_url in page_result.stylesheets {
+                            match self.download_and_analyze_css(&css_url, &css_dir) {
+                                Ok((asset, new_colors, new_fonts)) => {
+                                    result.stylesheets.push(asset);
+                                    colors_set.extend(new_colors);
+                                    fonts_set.extend(new_fonts);
+                                    css_count += 1;
+                                    on_progress(ScrapeProgress {
+                                        event_type: "css_download".to_string(),
+                                        url: Some(css_url),
+                                        title: None,
+                                        pages_scraped: self.visited_urls.len(),
+                                        pages_total: max_pages,
+                                        images_downloaded: images_count,
+                                        css_downloaded: css_count,
+                                        progress_percent: progress,
+                                        message: format!("CSS telecharge: {}", css_count),
+                                    });
+                                }
+                                Err(e) => result.errors.push(e),
+                            }
+                        }
+                    }
+
+                    // Extract text
+                    if self.config.extract_text {
+                        result.texts.extend(page_result.texts);
+                    }
+
+                    // Inline styles colors
+                    colors_set.extend(page_result.inline_colors);
+
+                    // Emit page complete event
+                    on_progress(ScrapeProgress {
+                        event_type: "page_complete".to_string(),
+                        url: Some(url.clone()),
+                        title: Some(page_title),
+                        pages_scraped: self.visited_urls.len(),
+                        pages_total: max_pages,
+                        images_downloaded: images_count,
+                        css_downloaded: css_count,
+                        progress_percent: progress,
+                        message: format!("Page {} / {}", self.visited_urls.len(), max_pages),
+                    });
+                }
+                Err(e) => {
+                    result.errors.push(format!("Failed to scrape {}: {}", url, e));
+                    on_progress(ScrapeProgress {
+                        event_type: "error".to_string(),
+                        url: Some(url.clone()),
+                        title: None,
+                        pages_scraped: self.visited_urls.len(),
+                        pages_total: max_pages,
+                        images_downloaded: images_count,
+                        css_downloaded: css_count,
+                        progress_percent: progress,
+                        message: format!("Erreur: {}", e),
+                    });
+                }
+            }
+        }
+
+        result.colors = colors_set.into_iter().collect();
+        result.fonts = fonts_set.into_iter().collect();
+
+        // Save extracted texts to file
+        if !result.texts.is_empty() {
+            if let Err(e) = self.save_texts(&result.texts, &texts_dir) {
+                result.errors.push(format!("Failed to save texts: {}", e));
+            }
+        }
+
+        // Emit complete event
+        on_progress(ScrapeProgress {
+            event_type: "complete".to_string(),
+            url: None,
+            title: None,
+            pages_scraped: result.pages.len(),
+            pages_total: result.pages.len(),
+            images_downloaded: images_count,
+            css_downloaded: css_count,
+            progress_percent: 100.0,
+            message: format!(
+                "Scraping termine: {} pages, {} images, {} CSS",
+                result.pages.len(),
+                images_count,
+                css_count
+            ),
+        });
+
+        Ok(result)
+    }
+
     fn scrape_page(&self, url: &str) -> Result<PageScrapeResult, String> {
         let response = self.client.get(url).send()
             .map_err(|e| format!("Request failed: {}", e))?;
@@ -493,8 +705,31 @@ fn sanitize_filename(name: &str) -> String {
         .collect()
 }
 
+// Progress callback data
+#[derive(Debug, Clone, Serialize)]
+pub struct ScrapeProgress {
+    pub event_type: String,  // "page_start", "page_complete", "image_download", "css_download", "complete", "error"
+    pub url: Option<String>,
+    pub title: Option<String>,
+    pub pages_scraped: usize,
+    pub pages_total: usize,
+    pub images_downloaded: usize,
+    pub css_downloaded: usize,
+    pub progress_percent: f32,
+    pub message: String,
+}
+
 // Tauri command to start scraping
 pub fn scrape_website(config: ScrapeConfig) -> Result<ScrapeResult, String> {
     let mut scraper = Scraper::new(config)?;
     scraper.scrape()
+}
+
+// Scrape with progress callback for real-time updates
+pub fn scrape_website_with_callback<F>(config: ScrapeConfig, mut on_progress: F) -> Result<ScrapeResult, String>
+where
+    F: FnMut(ScrapeProgress),
+{
+    let mut scraper = Scraper::new(config)?;
+    scraper.scrape_with_callback(&mut on_progress)
 }

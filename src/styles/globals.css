@@ -2860,3 +2860,651 @@ body {
   font-size: 10px;
   opacity: 0.7;
 }
+
+/* ============================================
+   Filter Bar & Search (ProjectList)
+   ============================================ */
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color 150ms;
+}
+
+.search-input:focus-within {
+  border-color: var(--accent-blue);
+}
+
+.search-input svg {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.search-input input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  width: 200px;
+}
+
+.search-input input::placeholder {
+  color: var(--text-secondary);
+}
+
+.sort-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.sort-buttons button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.sort-buttons button:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.sort-buttons button.active {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+/* ============================================
+   Sidebar Projects (Search, Sort, Scroll)
+   ============================================ */
+
+.sidebar-projects-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color 150ms;
+}
+
+.sidebar-search:focus-within {
+  border-color: var(--accent-blue);
+}
+
+.sidebar-search svg {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.sidebar-search input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.sidebar-search input::placeholder {
+  color: var(--text-secondary);
+}
+
+.sidebar-sort-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+.sidebar-sort-buttons button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.sidebar-sort-buttons button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.sidebar-sort-buttons button.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.sidebar-projects-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-no-results {
+  padding: 12px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  font-style: italic;
+}
+
+/* ============================================
+   Sync Status Badge (ProjectCard)
+   ============================================ */
+
+.card-sync-status {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.sync-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sync-status-badge-active {
+  background: rgba(79, 195, 247, 0.1);
+  color: var(--accent-blue);
+}
+
+.sync-status-badge-warning {
+  background: rgba(255, 183, 77, 0.1);
+  color: var(--warning);
+}
+
+.sync-status-badge-error {
+  background: rgba(232, 76, 76, 0.1);
+  color: var(--error);
+}
+
+.sync-status-badge-success {
+  background: rgba(129, 199, 132, 0.1);
+  color: var(--success);
+}
+
+.sync-badge-spinner {
+  animation: spin 1s linear infinite;
+}
+
+.sync-badge-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.sync-badge-progress-fill {
+  height: 100%;
+  background: var(--accent-blue);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+.sync-badge-cancel,
+.sync-badge-action {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.sync-badge-cancel:hover,
+.sync-badge-action:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   FTP Connection Progress
+   ============================================ */
+
+.connection-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  flex: 1;
+}
+
+.connection-progress-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.connection-cancel-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.connection-cancel-btn:hover {
+  background: rgba(232, 76, 76, 0.1);
+  border-color: var(--error);
+  color: var(--error);
+}
+
+/* ============================================
+   Advanced FTP Tools
+   ============================================ */
+
+.advanced-ftp-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.advanced-tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.advanced-tool-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent-blue);
+  transform: translateY(-1px);
+}
+
+.advanced-tool-btn svg {
+  color: var(--accent-blue);
+  flex-shrink: 0;
+}
+
+.tool-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.tool-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Large modal variant */
+.modal-large .modal-content {
+  max-width: 800px;
+  max-height: 85vh;
+}
+
+.modal-large .modal-body {
+  max-height: calc(85vh - 120px);
+  overflow-y: auto;
+}
+
+/* Utility classes */
+.mt-4 {
+  margin-top: 16px;
+}
+
+/* ============================================
+   Mini Sidebar
+   ============================================ */
+
+.mini-sidebar {
+  width: 60px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  gap: 8px;
+  -webkit-app-region: drag;
+}
+
+.mini-sidebar-logo {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.mini-sidebar-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.mini-sidebar-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 150ms;
+  -webkit-app-region: no-drag;
+}
+
+.mini-sidebar-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.mini-sidebar-btn.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.mini-sidebar-btn.accent {
+  background: var(--success);
+  color: white;
+}
+
+.mini-sidebar-btn.accent:hover {
+  filter: brightness(1.1);
+}
+
+.mini-sidebar-spacer {
+  flex: 1;
+}
+
+/* ============================================
+   Content Header (unified header for main content)
+   ============================================ */
+
+.content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.content-header-title {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.content-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ============================================
+   Filter Toggle Button
+   ============================================ */
+
+.filter-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-toggle-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+
+.filter-toggle-btn.open {
+  background: var(--bg-secondary);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.filter-toggle-btn.has-filters {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--accent-blue);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 9px;
+}
+
+/* ============================================
+   View Toggle
+   ============================================ */
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.view-toggle button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.view-toggle button:first-child {
+  border-right: 1px solid var(--border);
+}
+
+.view-toggle button:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.view-toggle button.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+/* ============================================
+   Project List View (rows)
+   ============================================ */
+
+.project-list-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.project-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-list-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.project-list-row:hover {
+  border-color: var(--accent-blue);
+  background: var(--bg-tertiary);
+}
+
+.project-list-row .status-dot {
+  flex-shrink: 0;
+}
+
+.row-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+}
+
+.row-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.row-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.row-url {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-ftp-status {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.row-action {
+  padding: 6px;
+  border: none;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-action:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.row-action.sync-btn {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.row-action.sync-btn:hover {
+  filter: brightness(1.1);
+}
+
+.row-action.sync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

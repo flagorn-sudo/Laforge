@@ -1,0 +1,190 @@
+/* ============================================
+   FilterBar - Expandable Filter Panel
+   ============================================ */
+
+.filter-bar-container {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease-out, opacity 0.2s ease-out;
+  opacity: 0;
+  margin-bottom: 0;
+}
+
+.filter-bar-container.open {
+  max-height: 120px;
+  opacity: 1;
+  margin-bottom: 16px;
+}
+
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* Filter Section (Status) */
+.filter-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+/* Status Chips */
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  opacity: 0.5;
+}
+
+.status-chip:hover {
+  border-color: var(--status-color);
+  opacity: 0.8;
+}
+
+.status-chip.active {
+  opacity: 1;
+  color: var(--text-primary);
+}
+
+.status-chip.selected {
+  background: rgba(var(--status-color-rgb, 128, 128, 128), 0.15);
+  border-color: var(--status-color);
+  color: var(--status-color);
+}
+
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--status-color);
+  flex-shrink: 0;
+}
+
+/* Filter Actions Row */
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-buttons {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.filter-buttons button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-buttons button:first-child {
+  border-right: 1px solid var(--border);
+}
+
+.filter-buttons button:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.filter-buttons button.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+/* Reset Button */
+.reset-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reset-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.reset-btn.has-filters {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.reset-btn.has-filters:hover {
+  background: rgba(79, 195, 247, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .filter-bar {
+    gap: 16px;
+  }
+
+  .filter-section {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .filter-actions {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .reset-btn {
+    margin-left: 0;
+    margin-top: 8px;
+  }
+}

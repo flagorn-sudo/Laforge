@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Download, Upload, Shield } from 'lucide-react';
 import { Button } from '../../../components/ui';
-import { exportBackup, importBackup, applyBackupData, BackupData } from '../../../services/backupService';
+import { exportBackup, importBackup, applyBackupData } from '../../../services/backupService';
 import { Settings, Project } from '../../../types';
+import { useSettingsStore } from '../../../stores';
 
 interface BackupSectionProps {
   settings: Partial<Settings>;
@@ -21,7 +22,6 @@ export function BackupSection({
 }: BackupSectionProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [importPreview, setImportPreview] = useState<BackupData | null>(null);
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -44,7 +44,20 @@ export function BackupSection({
     try {
       const result = await importBackup();
       if (result.success && result.data) {
-        setImportPreview(result.data);
+        // Apply backup automatically without confirmation step
+        const applyResult = await applyBackupData(result.data, onSettingsUpdate);
+
+        // CRITICAL: Force immediate save to disk (bypass debounce)
+        await useSettingsStore.getState().saveSettingsImmediate();
+
+        if (applyResult.settingsRestored) {
+          onNotification('success', `Import réussi: ${applyResult.projectsRestored} projet(s) restauré(s)`);
+        } else {
+          onNotification('warning', `Import partiel: ${applyResult.errors.join(', ')}`);
+        }
+
+        // Refresh projects list after import
+        onProjectsRefresh();
       } else if (result.error !== 'Import annulé') {
         onNotification('error', result.error || 'Erreur lors de l\'import');
       }
@@ -53,30 +66,6 @@ export function BackupSection({
     } finally {
       setIsImporting(false);
     }
-  };
-
-  const handleConfirmImport = async () => {
-    if (!importPreview) return;
-
-    try {
-      const result = await applyBackupData(importPreview, onSettingsUpdate);
-
-      if (result.settingsRestored) {
-        onNotification('success', `Restauration terminée: ${result.projectsRestored} projet(s) restauré(s)`);
-      } else {
-        onNotification('warning', `Restauration partielle: ${result.errors.join(', ')}`);
-      }
-
-      // Refresh projects list after import
-      onProjectsRefresh();
-      setImportPreview(null);
-    } catch (error) {
-      onNotification('error', error instanceof Error ? error.message : 'Erreur lors de la restauration');
-    }
-  };
-
-  const handleCancelImport = () => {
-    setImportPreview(null);
   };
 
   return (
@@ -105,37 +94,6 @@ export function BackupSection({
             Le fichier .fg contient toutes vos données, y compris les mots de passe FTP et la clé API Gemini. Conservez-le en lieu sûr.
           </span>
         </div>
-
-        {importPreview && (
-          <div className="import-preview">
-            <h4>Aperçu de l'import</h4>
-            <p>
-              <strong>Date d'export:</strong>{' '}
-              {new Date(importPreview.exportedAt).toLocaleDateString('fr-FR', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </p>
-            <p>
-              <strong>Workspace:</strong> {importPreview.settings.workspacePath || 'Non défini'}
-            </p>
-            <p>
-              <strong>Projets:</strong> {importPreview.projects.length} projet(s)
-            </p>
-
-            <div className="import-preview-actions">
-              <Button onClick={handleConfirmImport}>
-                Confirmer l'import
-              </Button>
-              <Button onClick={handleCancelImport} className="btn-secondary">
-                Annuler
-              </Button>
-            </div>
-          </div>
-        )}
 
         <p className="backup-info">
           La sauvegarde contient : chemin du workspace, modèle Gemini, structure des dossiers, paramètres d'organisation automatique, et configurations des projets (URLs, FTP sans mot de passe, couleurs, polices...).

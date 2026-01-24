@@ -1,6 +1,6 @@
 /**
  * SyncProgress Component
- * Shows real-time synchronization progress with file list
+ * Shows real-time synchronization progress with file list and retry status
  */
 
 import {
@@ -13,9 +13,12 @@ import {
   File,
   FileCheck,
   X,
+  RefreshCw,
+  FileText,
 } from 'lucide-react';
 import { Button } from '../../../components/ui';
-import { SyncStage, SyncFileProgress } from '../../../stores/syncStore';
+import { SyncStage, SyncFileProgress, RetryState } from '../../../stores/syncStore';
+import { useRetryCountdown } from '../../../hooks';
 import './SyncProgress.css';
 
 interface SyncProgressProps {
@@ -26,18 +29,22 @@ interface SyncProgressProps {
   filesCompleted: number;
   files: SyncFileProgress[];
   error: string | null;
+  retry?: RetryState;
   onCancel?: () => void;
   onRetry?: () => void;
   onClose?: () => void;
+  onOpenLogs?: () => void;
 }
 
 const STAGE_INFO: Record<SyncStage, { label: string; icon: React.ReactNode }> = {
   idle: { label: 'En attente', icon: <FolderSync size={18} /> },
   connecting: { label: 'Connexion au serveur...', icon: <Wifi size={18} /> },
+  retrying: { label: 'Reconnexion en cours...', icon: <RefreshCw size={18} /> },
   analyzing: { label: 'Analyse des fichiers...', icon: <FolderSync size={18} /> },
   uploading: { label: 'Envoi des fichiers...', icon: <Upload size={18} /> },
   complete: { label: 'Synchronisation terminee', icon: <CheckCircle size={18} /> },
   error: { label: 'Erreur', icon: <AlertCircle size={18} /> },
+  cancelled: { label: 'Annulé', icon: <X size={18} /> },
 };
 
 function formatFileSize(bytes?: number): string {
@@ -59,27 +66,52 @@ export function SyncProgress({
   filesCompleted,
   files,
   error,
+  retry,
   onCancel,
   onRetry,
   onClose,
+  onOpenLogs,
 }: SyncProgressProps) {
   const stageInfo = STAGE_INFO[stage];
   const isRunning = stage === 'connecting' || stage === 'analyzing' || stage === 'uploading';
+  const isRetrying = stage === 'retrying';
   const isComplete = stage === 'complete';
   const isError = stage === 'error';
 
+  // Use retry countdown hook
+  const secondsRemaining = useRetryCountdown(retry?.nextRetryAt ?? null);
+
   // Only show files that need to be uploaded
   const filesToShow = files.slice(0, 50); // Limit display to 50 files
+
+  // Build retry info display
+  const getRetryLabel = (): string => {
+    if (!isRetrying || !retry) return stageInfo.label;
+    return `Tentative ${retry.currentAttempt + 1}/${retry.maxAttempts}`;
+  };
+
+  const getRetrySubtext = (): string | null => {
+    if (!isRetrying || !retry) return null;
+    if (secondsRemaining > 0) {
+      return `Nouvelle tentative dans ${secondsRemaining}s...`;
+    }
+    return 'Connexion en cours...';
+  };
 
   return (
     <div className={`sync-progress ${stage}`}>
       {/* Header */}
       <div className="sync-progress-header">
         <div className={`sync-progress-icon ${stage}`}>
-          {isRunning ? <Loader size={20} className="spinner" /> : stageInfo.icon}
+          {(isRunning || isRetrying) ? <Loader size={20} className="spinner" /> : stageInfo.icon}
         </div>
         <div className="sync-progress-title">
-          <h4>{stageInfo.label}</h4>
+          <h4>{isRetrying ? getRetryLabel() : stageInfo.label}</h4>
+          {isRetrying && (
+            <span className="sync-retry-info">
+              {getRetrySubtext()}
+            </span>
+          )}
           {isRunning && currentFile && (
             <span className="sync-current-file" title={currentFile}>
               {getFileName(currentFile)}
@@ -97,6 +129,14 @@ export function SyncProgress({
           </button>
         )}
       </div>
+
+      {/* Retry error message (shown during retrying) */}
+      {isRetrying && retry?.lastError && (
+        <div className="sync-retry-error">
+          <AlertCircle size={14} />
+          <span>{retry.lastError}</span>
+        </div>
+      )}
 
       {/* Progress bar */}
       {(isRunning || isComplete) && (
@@ -156,7 +196,13 @@ export function SyncProgress({
 
       {/* Actions */}
       <div className="sync-progress-actions">
-        {isRunning && onCancel && (
+        {onOpenLogs && (
+          <Button variant="ghost" onClick={onOpenLogs} title="Voir les logs détaillés">
+            <FileText size={14} />
+            Logs
+          </Button>
+        )}
+        {(isRunning || isRetrying) && onCancel && (
           <Button variant="ghost" onClick={onCancel}>
             Annuler
           </Button>

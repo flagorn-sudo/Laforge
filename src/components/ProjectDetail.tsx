@@ -20,6 +20,8 @@ import {
   FolderSync,
   FileText,
   BookOpen,
+  History,
+  Calendar,
 } from 'lucide-react';
 import { Project, PROJECT_STATUS_CONFIG, FTPProtocol, ReferenceWebsite, ProjectStatus } from '../types';
 import { ReorganizeProjectModal } from './ReorganizeProjectModal';
@@ -31,8 +33,12 @@ import { briefGenerator } from '../services/briefGenerator';
 import { fileSystemService } from '../services/fileSystemService';
 import { Button, Card, Modal, Tabs } from './ui';
 import { FTPSection, ProjectFileTree, SyncProgress } from '../features/projects/components';
-import { ScrapingPanel } from '../features/scraping/components';
+import { ScrapingPage } from './ScrapingPage';
+import { FTPLogWindow } from './FTPLogWindow';
+import { VersionHistory } from './VersionHistory';
+import { SyncScheduler } from './SyncScheduler';
 import { useFTPConnection } from '../features/projects/hooks/useFTPConnection';
+import { useSyncEvents } from '../hooks';
 import { useUIStore, useSyncStore, useProjectStore } from '../stores';
 
 /**
@@ -139,6 +145,9 @@ export function ProjectDetail({
   const [activeTab, setActiveTab] = useState('general');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showReorganizeModal, setShowReorganizeModal] = useState(false);
+  const [showLogWindow, setShowLogWindow] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showScheduler, setShowScheduler] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -188,8 +197,11 @@ export function ProjectDetail({
     testResult,
     remoteFolders,
     loadingFolders,
+    stage: connectionStage,
+    elapsedSeconds,
     testConnection,
     resetTestResult,
+    cancelConnection,
   } = useFTPConnection();
 
   const { addNotification } = useUIStore();
@@ -198,9 +210,16 @@ export function ProjectDetail({
   const { startEditing, stopEditing } = useProjectStore();
 
   // Sync store for progress tracking
-  const { getSyncState, startSync, resetSync } = useSyncStore();
+  const { getSyncState, canStartSync, startSync, resetSync, cancelSync, clearLogs, retryFailedFile, clearConnectionError } = useSyncStore();
   const syncState = getSyncState(project.id);
-  const syncing = syncState.stage !== 'idle' && syncState.stage !== 'complete' && syncState.stage !== 'error';
+  const syncing = syncState.stage !== 'idle' && syncState.stage !== 'complete' && syncState.stage !== 'error' && syncState.stage !== 'cancelled';
+  const syncAllowed = canStartSync(project.id);
+
+  // Listen for sync events from Rust backend
+  useSyncEvents({
+    projectId: project.id,
+    enabled: syncing,
+  });
 
   // Editing protection: Block fetchProjects while editing this project
   useEffect(() => {
@@ -263,7 +282,12 @@ export function ProjectDetail({
   }, [project.id, project.path]);
 
   const handleSync = async () => {
-    if (syncing) return;
+    // Check if sync is allowed
+    const check = canStartSync(project.id);
+    if (!check.allowed) {
+      addNotification('warning', check.reason || 'Synchronisation non disponible');
+      return;
+    }
 
     // Switch to FTP tab to show progress
     setActiveTab('ftp');
@@ -697,9 +721,23 @@ export function ProjectDetail({
           )}
           {(currentSiteUrl || testUrl) && <div style={{ width: 1, height: 24, background: 'var(--border)' }} />}
           {canSync && onSync && (
-            <Button variant="primary" onClick={handleSync} disabled={syncing}>
+            <Button
+              variant="primary"
+              onClick={handleSync}
+              disabled={syncing || !syncAllowed.allowed}
+              title={!syncAllowed.allowed ? syncAllowed.reason : undefined}
+            >
               {syncing ? <Loader size={16} className="spinner" /> : <RefreshCw size={16} />}
               Synchroniser
+            </Button>
+          )}
+          {syncState.lastConnectionFailed && (
+            <Button
+              variant="ghost"
+              onClick={() => clearConnectionError(project.id)}
+              title="Reinitialiser l'etat de connexion"
+            >
+              Reessayer
             </Button>
           )}
           {hasChanges && (
@@ -1242,6 +1280,8 @@ export function ProjectDetail({
               testResult={testResult}
               remoteFolders={remoteFolders}
               loadingFolders={loadingFolders}
+              connectionStage={connectionStage}
+              elapsedSeconds={elapsedSeconds}
               onSftpChange={handleSftpChange}
               onLocalPathChange={(path) => {
                 setLocalPath(path);
@@ -1254,6 +1294,7 @@ export function ProjectDetail({
               onSavePasswordChange={setSavePassword}
               onTestConnection={handleTestConnection}
               onResetTestResult={resetTestResult}
+              onCancelConnection={cancelConnection}
             />
 
             {/* Sync Progress - visible when syncing or after sync */}
@@ -1266,10 +1307,87 @@ export function ProjectDetail({
                 filesCompleted={syncState.filesCompleted}
                 files={syncState.files}
                 error={syncState.error}
-                onCancel={() => resetSync(project.id)}
+                retry={syncState.retry}
+                onCancel={() => cancelSync(project.id)}
                 onRetry={handleSync}
                 onClose={handleCloseSyncProgress}
+                onOpenLogs={() => setShowLogWindow(true)}
               />
+            )}
+
+            {/* FTP Log Window Modal */}
+            <FTPLogWindow
+              isOpen={showLogWindow}
+              onClose={() => setShowLogWindow(false)}
+              stage={syncState.stage}
+              progress={syncState.progress}
+              currentFile={syncState.currentFile}
+              filesTotal={syncState.filesTotal}
+              filesCompleted={syncState.filesCompleted}
+              files={syncState.files}
+              logs={syncState.logs}
+              failedFiles={syncState.failedFiles}
+              error={syncState.error}
+              startTime={syncState.startTime}
+              onCancel={() => cancelSync(project.id)}
+              onRetry={handleSync}
+              onRetryFile={(filePath) => retryFailedFile(project.id, filePath)}
+              onClearLogs={() => clearLogs(project.id)}
+            />
+
+            {/* Advanced FTP Features */}
+            <Card title="Outils avances" className="mt-4">
+              <div className="advanced-ftp-tools">
+                <button
+                  className="advanced-tool-btn"
+                  onClick={() => setShowVersionHistory(true)}
+                >
+                  <History size={18} />
+                  <div className="tool-info">
+                    <span className="tool-name">Historique des versions</span>
+                    <span className="tool-desc">Snapshots et restauration</span>
+                  </div>
+                </button>
+                <button
+                  className="advanced-tool-btn"
+                  onClick={() => setShowScheduler(true)}
+                >
+                  <Calendar size={18} />
+                  <div className="tool-info">
+                    <span className="tool-name">Planification</span>
+                    <span className="tool-desc">Sync automatique</span>
+                  </div>
+                </button>
+              </div>
+            </Card>
+
+            {/* Version History Modal */}
+            {showVersionHistory && (
+              <Modal
+                title="Historique des versions"
+                onClose={() => setShowVersionHistory(false)}
+                className="modal-large"
+              >
+                <VersionHistory
+                  projectId={project.id}
+                  localPath={`${project.path}/${localPath}`}
+                  onClose={() => setShowVersionHistory(false)}
+                />
+              </Modal>
+            )}
+
+            {/* Sync Scheduler Modal */}
+            {showScheduler && (
+              <Modal
+                title="Planification de synchronisation"
+                onClose={() => setShowScheduler(false)}
+              >
+                <SyncScheduler
+                  projectId={project.id}
+                  projectName={project.client || project.name}
+                  onClose={() => setShowScheduler(false)}
+                />
+              </Modal>
             )}
           </>
         )}
@@ -1299,15 +1417,14 @@ export function ProjectDetail({
 
         {/* Tab: Scraping */}
         {activeTab === 'scraping' && (
-          <ScrapingPanel
+          <ScrapingPage
             project={project}
             projectPath={project.path}
-            projectName={project.client || project.name}
-            initialUrl={currentSiteUrl}
             geminiApiKey={geminiApiKey}
             geminiModel={geminiModel}
-            onScrapingComplete={(_result, updatedProject) => {
-              // Le projet mis à jour est retourné par le store avec les stats de scraping
+            embedded={true}
+            onComplete={(_result, updatedProject) => {
+              // Le projet mis à jour est retourné avec les stats de scraping
               onUpdate(updatedProject);
             }}
           />

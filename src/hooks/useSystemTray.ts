@@ -12,12 +12,15 @@ import { logger } from '../lib/logger';
 
 const log = logger.scope('SystemTray');
 
+export type TrayIconState = 'normal' | 'syncing' | 'success';
+
 export interface UseSystemTrayResult {
   // State
   isAvailable: boolean;
 
   // Actions
   updateRecentProjects: (projects: Project[]) => Promise<void>;
+  setSyncIndicator: (state: TrayIconState) => Promise<void>;
 
   // Event handlers
   onOpenFinder: (callback: (projectId: string) => void) => void;
@@ -134,9 +137,24 @@ export function useSystemTray(): UseSystemTrayResult {
     setSyncProjectHandler(() => callback);
   }, []);
 
+  const setSyncIndicator = useCallback(
+    async (state: TrayIconState) => {
+      if (!isAvailable) return;
+
+      try {
+        await invoke('tray_set_sync_indicator', { state });
+        log.debug('Set tray sync indicator', { state });
+      } catch (err) {
+        log.error('Failed to set tray sync indicator', err);
+      }
+    },
+    [isAvailable]
+  );
+
   return {
     isAvailable,
     updateRecentProjects,
+    setSyncIndicator,
     onOpenFinder,
     onSyncProject,
   };

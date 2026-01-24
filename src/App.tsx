@@ -1,13 +1,13 @@
-import { useEffect, useCallback } from 'react';
-import { Sidebar } from './components/Sidebar';
+import { useEffect, useCallback, useState } from 'react';
+import { MiniSidebar } from './components/MiniSidebar';
 import { ProjectList } from './components/ProjectList';
 import { ProjectDetail } from './components/ProjectDetail';
-import { Settings } from './components/Settings';
+import { SettingsPage } from './components/SettingsPage';
 import { CreateProject } from './components/CreateProject';
 import { Notifications } from './components/Notifications';
 import { AboutModal } from './components/AboutModal';
 import { ProjectFormData } from './components/ProjectForm';
-import { useProjectStore, useSettingsStore, useUIStore } from './stores';
+import { useProjectStore, useSettingsStore, useUIStore, useScheduleStore } from './stores';
 import { useMenuEvents, useFileWatcher, useSystemTray } from './hooks';
 import { syncService } from './services/syncService';
 import { projectService } from './services/projectService';
@@ -31,7 +31,12 @@ function LoadingScreen() {
   );
 }
 
+type AppView = 'projects' | 'settings';
+
 export function App() {
+  // Current view state
+  const [currentView, setCurrentView] = useState<AppView>('projects');
+
   // Stores
   const {
     projects,
@@ -41,6 +46,7 @@ export function App() {
     selectProject,
     createProject,
     deleteProject,
+    updateProjectLocally,
   } = useProjectStore();
 
   const {
@@ -48,7 +54,11 @@ export function App() {
     geminiApiKey,
     geminiModel,
     folderStructure,
+    autoOrganize,
+    showMenuBarIcon,
+    viewMode = 'grid',
     updateSettings,
+    setViewMode,
     markSaved,
     isHydrated,
     loadSettings,
@@ -60,6 +70,8 @@ export function App() {
     closeModal,
     addNotification,
   } = useUIStore();
+
+  const { startScheduler, loadSchedules } = useScheduleStore();
 
   // Load settings from Tauri store on mount and run migrations
   useEffect(() => {
@@ -80,6 +92,16 @@ export function App() {
     }
   }, [isHydrated, workspacePath, fetchProjects]);
 
+  // Initialize scheduler on mount
+  useEffect(() => {
+    loadSchedules().then(() => {
+      startScheduler();
+      console.log('[App] Sync scheduler initialized');
+    }).catch(err => {
+      console.error('[App] Failed to initialize scheduler:', err);
+    });
+  }, [loadSchedules, startScheduler]);
+
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Check if Cmd key is pressed (metaKey on Mac)
@@ -91,7 +113,7 @@ export function App() {
           break;
         case ',':
           e.preventDefault();
-          openModal('settings');
+          setCurrentView('settings');
           break;
         case 'r':
           e.preventDefault();
@@ -170,8 +192,8 @@ export function App() {
       }
     }, [addNotification]),
     onPreferences: useCallback(() => {
-      openModal('settings');
-    }, [openModal]),
+      setCurrentView('settings');
+    }, []),
     onNewProject: useCallback(() => {
       openModal('createProject');
     }, [openModal]),
@@ -277,8 +299,7 @@ export function App() {
 
   const handleSaveSettings = () => {
     markSaved();
-    closeModal();
-    addNotification('success', 'Paramètres enregistrés');
+    addNotification('success', 'Parametres enregistres');
   };
 
   const handleDelete = async (project: Project): Promise<void> => {
@@ -298,27 +319,43 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar
-        projects={projects.slice(0, 5)}
-        selectedProjectId={selectedProjectId}
-        onProjectSelect={(p) => selectProject(p.id)}
-        onShowProjectList={() => selectProject(null)}
+      <MiniSidebar
+        onHome={() => { selectProject(null); setCurrentView('projects'); }}
         onNewProject={() => openModal('createProject')}
+        onSettings={() => setCurrentView('settings')}
         onRefresh={() => fetchProjects(workspacePath)}
-        onSettings={() => openModal('settings')}
+        isHome={!selectedProjectId && currentView === 'projects'}
       />
 
       <div className="main-wrapper">
         <main className="main-content">
-          {selectedProject ? (
+          {currentView === 'settings' ? (
+            <SettingsPage
+              settings={{
+                workspacePath,
+                geminiApiKey,
+                geminiModel,
+                folderStructure,
+                autoOrganize,
+                showMenuBarIcon,
+              }}
+              projects={projects}
+              onUpdate={updateSettings}
+              onSave={handleSaveSettings}
+              onBack={() => setCurrentView('projects')}
+              onProjectsRefresh={() => fetchProjects(workspacePath)}
+              onNotification={addNotification}
+            />
+          ) : selectedProject ? (
             <ProjectDetail
               project={selectedProject}
               workspacePath={workspacePath}
               geminiApiKey={geminiApiKey}
               geminiModel={geminiModel}
               onBack={() => selectProject(null)}
-              onUpdate={() => {
-                fetchProjects(workspacePath);
+              onUpdate={(updatedProject: Project) => {
+                // Optimistic local update - no full reload needed
+                updateProjectLocally(updatedProject);
               }}
               onSync={handleSync}
               onDelete={handleDelete}
@@ -330,27 +367,12 @@ export function App() {
               onSelect={(p) => selectProject(p.id)}
               onNewProject={() => openModal('createProject')}
               onSync={handleSync}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
             />
           )}
         </main>
       </div>
-
-      {activeModal === 'settings' && (
-        <Settings
-          settings={{
-            workspacePath,
-            geminiApiKey,
-            geminiModel,
-            folderStructure,
-          }}
-          projects={projects}
-          onUpdate={updateSettings}
-          onSave={handleSaveSettings}
-          onClose={closeModal}
-          onProjectsRefresh={() => fetchProjects(workspacePath)}
-          onNotification={addNotification}
-        />
-      )}
 
       {activeModal === 'createProject' && (
         <CreateProject

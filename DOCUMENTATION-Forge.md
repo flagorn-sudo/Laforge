@@ -40,46 +40,145 @@ npm run tauri dev
 Forge/
 ├── src/                          # Frontend React
 │   ├── main.tsx                  # Point d'entrée React
-│   ├── App.tsx                   # Composant racine + routing
-│   ├── components/
-│   │   ├── Sidebar.tsx           # Navigation latérale
-│   │   ├── ProjectList.tsx       # Grille des projets
+│   ├── App.tsx                   # Composant racine + orchestration
+│   │
+│   ├── components/               # Composants globaux
+│   │   ├── Sidebar.tsx           # Navigation latérale + recherche/tri
+│   │   ├── ProjectList.tsx       # Grille des projets + filtres
 │   │   ├── ProjectCard.tsx       # Carte projet
-│   │   ├── ProjectDetail.tsx     # Vue détaillée
+│   │   ├── ProjectDetail.tsx     # Vue détaillée (onglets)
 │   │   ├── CreateProject.tsx     # Modal création
 │   │   ├── Settings.tsx          # Paramètres
-│   │   ├── SFTPConfig.tsx        # Configuration SFTP
 │   │   ├── SmartPaste.tsx        # Smart Paste FTP
+│   │   ├── Notifications.tsx     # Système de notifications
+│   │   ├── AboutModal.tsx        # Modal À propos
+│   │   │
+│   │   │  # Nouveaux composants v1.0.1
+│   │   ├── ProjectDashboard.tsx  # Tableau de bord projet
+│   │   ├── VersionHistory.tsx    # Historique des versions
+│   │   ├── SyncScheduler.tsx     # Planification sync
+│   │   ├── DeltaSyncStats.tsx    # Stats delta sync
+│   │   ├── FTPLogWindow.tsx      # Journal FTP temps réel
+│   │   ├── FullSiteScraper.tsx   # Scraping site complet
+│   │   ├── PostSyncHooks.tsx     # Hooks post-sync
+│   │   ├── PreviewLinkGenerator.tsx # Générateur liens preview
+│   │   ├── SyncStatusBadge.tsx   # Badge statut sync
+│   │   │
 │   │   └── ui/                   # Composants réutilisables
-│   │       ├── Button.tsx
-│   │       ├── Input.tsx
-│   │       ├── Modal.tsx
-│   │       ├── Badge.tsx
-│   │       └── Card.tsx
-│   ├── services/
+│   │       ├── Button.tsx, Input.tsx, Modal.tsx
+│   │       ├── Badge.tsx, Card.tsx, Switch.tsx
+│   │       ├── TreeView.tsx      # Arbre DnD (dnd-kit)
+│   │       ├── ContextMenu.tsx   # Menu contextuel
+│   │       ├── Tabs.tsx          # Onglets
+│   │       └── ExternalLink.tsx
+│   │
+│   ├── features/                 # Fonctionnalités par domaine
+│   │   ├── projects/
+│   │   │   ├── components/
+│   │   │   │   ├── FTPSection.tsx
+│   │   │   │   ├── ProjectFileTree.tsx
+│   │   │   │   ├── SyncProgress.tsx
+│   │   │   │   └── tabs/GeneralTab/
+│   │   │   └── hooks/
+│   │   │       └── useFTPConnection.ts
+│   │   ├── scraping/
+│   │   │   └── components/
+│   │   │       ├── ScrapingPanel.tsx
+│   │   │       └── ScrapingProgress.tsx
+│   │   └── settings/
+│   │       ├── components/
+│   │       │   ├── FolderStructureSection.tsx
+│   │       │   ├── BackupSection.tsx
+│   │       │   └── GeminiSection.tsx
+│   │       └── hooks/
+│   │           └── useFolderTree.ts
+│   │
+│   ├── services/                 # Logique métier
 │   │   ├── projectService.ts     # CRUD projets
-│   │   ├── sftpService.ts        # Synchronisation SFTP
-│   │   ├── geminiService.ts      # API Gemini
-│   │   └── storageService.ts     # LocalStorage + fichiers
-│   ├── hooks/
-│   │   ├── useProjects.ts        # Hook gestion projets
-│   │   └── useSettings.ts        # Hook paramètres
+│   │   ├── sftpService.ts        # FTP/SFTP
+│   │   ├── syncService.ts        # Synchronisation
+│   │   ├── configStore.ts        # Tauri Store wrapper
+│   │   ├── backupService.ts      # Sauvegarde/restauration
+│   │   ├── briefGenerator.ts     # Génération brief projet
+│   │   │
+│   │   │  # Nouveaux services v1.0.1
+│   │   ├── deltaService.ts       # Service delta sync
+│   │   ├── fullSiteScraperService.ts # Service scraping complet
+│   │   ├── previewService.ts     # Service liens preview
+│   │   ├── transferResumeService.ts  # Service reprise transfert
+│   │   │
+│   │   ├── gemini/               # Services Gemini (modulaires)
+│   │   │   ├── geminiApiClient.ts
+│   │   │   ├── textProcessor.ts
+│   │   │   ├── contentAnalyzer.ts
+│   │   │   └── ftpCredentialParser.ts
+│   │   └── documentation/
+│   │       ├── markdownGenerator.ts
+│   │       └── webScraper.ts
+│   │
+│   ├── stores/                   # État global (Zustand)
+│   │   ├── projectStore.ts       # Projets
+│   │   ├── settingsStore.ts      # Paramètres
+│   │   ├── uiStore.ts            # UI (modals, notifications)
+│   │   ├── scrapingStore.ts      # État scraping
+│   │   ├── syncStore.ts          # Progression sync
+│   │   │
+│   │   │  # Nouveaux stores v1.0.1
+│   │   ├── versionStore.ts       # Historique versions
+│   │   ├── scheduleStore.ts      # Planification sync
+│   │   └── hooksStore.ts         # Hooks post-sync
+│   │
+│   ├── hooks/                    # Hooks personnalisés
+│   │   ├── index.ts              # Exports
+│   │   ├── useAsync.ts           # Gestion états async
+│   │   ├── useProjectFiltering.ts # Filtrage/tri projets
+│   │   ├── useProjectForm.ts     # Formulaire projet
+│   │   ├── useScraping.ts        # Scraping
+│   │   ├── useColorMerge.ts      # Fusion couleurs
+│   │   ├── useClientProfile.ts   # Profil client IA
+│   │   ├── useMenuEvents.ts      # Événements menu macOS
+│   │   ├── useSystemTray.ts      # System tray macOS
+│   │   ├── useFileWatcher.ts     # Surveillance fichiers
+│   │   │
+│   │   │  # Nouveaux hooks v1.0.1
+│   │   ├── useSyncEvents.ts      # Événements sync temps réel
+│   │   └── useRetryCountdown.ts  # Countdown retry
+│   │
 │   ├── types/
-│   │   └── index.ts              # Types TypeScript
+│   │   └── index.ts              # Types TypeScript (enrichi)
+│   │
 │   └── styles/
-│       └── globals.css           # Styles globaux + thème
+│       └── globals.css           # Styles globaux
+│
 ├── src-tauri/                    # Backend Rust/Tauri
 │   ├── Cargo.toml
-│   ├── tauri.conf.json           # Config Tauri
+│   ├── tauri.conf.json           # Config Tauri + System Tray
 │   ├── src/
-│   │   └── main.rs               # Commands Tauri
-│   └── icons/                    # Icônes app
-├── public/
-│   └── forge.svg                 # Logo
-├── package.json
-├── vite.config.ts
-├── tsconfig.json
-└── index.html
+│   │   ├── main.rs               # Commands Tauri + menu
+│   │   ├── scraper.rs            # Scraping Rust
+│   │   ├── watcher.rs            # File watcher
+│   │   ├── tray.rs               # System Tray macOS
+│   │   │
+│   │   │  # Nouveaux modules v1.0.1
+│   │   ├── delta_sync.rs         # Sync incrémentale chunks
+│   │   ├── version_history.rs    # Snapshots & restauration
+│   │   ├── scheduler.rs          # Planification cron
+│   │   ├── parallel_sync.rs      # Transfert multi-connexions
+│   │   ├── transfer_resume.rs    # Reprise transferts
+│   │   └── full_site_scraper.rs  # Scraping site complet
+│   │
+│   └── icons/
+│       ├── icon.icns, icon.ico   # Icônes app
+│       ├── tray-icon.png         # Icône tray normale
+│       ├── tray-icon-syncing.png # Icône tray sync en cours
+│       └── tray-icon-success.png # Icône tray sync OK
+│
+├── docs/
+│   └── TECHNICAL_NOTES.md        # Notes techniques
+├── DOCUMENTATION-Forge.md        # Ce fichier
+├── TODO.md                       # Tâches à faire
+├── package.json                  # v1.0.1
+└── tsconfig.json
 ```
 
 ---
@@ -443,49 +542,83 @@ body { font-family: system-ui, sans-serif; line-height: 1.6; }`
 
 ### sftpService.ts
 
+**Timeouts par opération** (pour éviter le blocage UI) :
+| Opération | Timeout |
+|-----------|---------|
+| Connection test | 15s |
+| List files | 20s |
+| Diff analysis | 30s |
+| Full sync | 5min |
+
+**Protection contre les opérations multiples** :
+- Map `ongoingOperations` pour tracker les opérations en cours
+- Empêche de lancer une sync si une est déjà en cours
+- `isSyncInProgress(projectId)` pour vérifier l'état
+- `clearOperationLock(projectId)` pour réinitialiser en cas de blocage
+
 ```typescript
 import { invoke } from '@tauri-apps/api/tauri';
-import { SFTPConfig, FileDiff } from '../types';
+import { SFTPConfig, FileDiff, SyncOptions } from '../types';
 
 export const sftpService = {
-  // Tester la connexion
-  async testConnection(config: SFTPConfig): Promise<boolean> {
-    try {
-      return await invoke('sftp_test_connection', { config });
-    } catch (error) {
-      console.error('SFTP connection test failed:', error);
-      return false;
-    }
-  },
+  // Tester la connexion (avec timeout 15s)
+  async testConnection(config: SFTPConfig): Promise<boolean>,
 
-  // Lister les fichiers distants
-  async listRemoteFiles(config: SFTPConfig, path: string): Promise<string[]> {
-    return await invoke('sftp_list_files', { config, path });
-  },
+  // Lister les fichiers distants (avec timeout 20s)
+  async listRemoteFiles(config: SFTPConfig, path: string): Promise<string[]>,
 
-  // Calculer les différences
-  async getDiff(localPath: string, config: SFTPConfig): Promise<FileDiff[]> {
-    return await invoke('sftp_get_diff', { localPath, config });
-  },
+  // Calculer les différences (avec timeout 30s)
+  async getDiff(localPath: string, config: SFTPConfig): Promise<FileDiff[]>,
 
-  // Synchroniser
-  async sync(localPath: string, config: SFTPConfig, dryRun = false): Promise<FileDiff[]> {
-    return await invoke('sftp_sync', { localPath, config, dryRun });
-  },
+  // Synchroniser basique (avec timeout 5min)
+  async sync(localPath: string, config: SFTPConfig, dryRun = false): Promise<FileDiff[]>,
 
-  // Sauvegarder les credentials (via Tauri secure storage)
-  async saveCredentials(projectId: string, password: string): Promise<void> {
-    await invoke('save_password', { key: `sftp_${projectId}`, password });
-  },
+  // Synchroniser avec événements temps réel (avec timeout 5min + protection duplicata)
+  async syncWithEvents(localPath, config, projectId, dryRun, options?): Promise<FileDiff[]>,
 
-  // Récupérer les credentials
-  async getCredentials(projectId: string): Promise<string | null> {
-    try {
-      return await invoke('get_password', { key: `sftp_${projectId}` });
-    } catch {
-      return null;
-    }
-  },
+  // Vérifier si une sync est en cours pour un projet
+  isSyncInProgress(projectId: string): boolean,
+
+  // Forcer la réinitialisation d'un lock d'opération
+  clearOperationLock(projectId: string): void,
+
+  // Credentials
+  async saveCredentials(projectId: string, password: string): Promise<void>,
+  async getCredentials(projectId: string): Promise<string | null>,
+  async hasCredentials(projectId: string): Promise<boolean>,
+};
+```
+
+### scrapingService.ts
+
+**Protection contre le blocage UI** :
+- Timeout de 5 minutes max pour le scraping complet
+- Protection contre les scrapings multiples simultanés
+- Transformation automatique snake_case -> camelCase
+
+```typescript
+export const scrapingService = {
+  // Vérifier si un scraping est en cours
+  isScrapingInProgress(): boolean,
+
+  // Obtenir l'ID du projet en cours de scraping
+  getCurrentScrapingProjectId(): string | null,
+
+  // Scraping avec événements temps réel (timeout 5 min)
+  async scrapeWebsiteWithEvents(config: {
+    url: string;
+    outputPath: string;
+    maxPages: number;
+    downloadImages: boolean;
+    downloadCss: boolean;
+    extractText: boolean;
+  }, projectId: string): Promise<TransformedScrapeResult>,
+
+  // Annuler le scraping en cours
+  cancelScraping(): void,
+
+  // Analyser un site web (couleurs, polices, etc.)
+  async analyzeWebsite(url, apiKey, model?): Promise<WebsiteAnalysis>,
 };
 ```
 
@@ -1342,16 +1475,537 @@ L'application compilée sera dans `src-tauri/target/release/bundle/`.
 
 ---
 
+## Hooks Personnalisés
+
+### useProjectFiltering
+
+Hook centralisé pour le filtrage et tri des projets. Utilisé par `Sidebar` et `ProjectList`.
+
+```typescript
+import { useProjectFiltering } from '../hooks';
+
+const {
+  searchQuery,      // string - terme de recherche actuel
+  setSearchQuery,   // (query: string) => void
+  sortBy,           // 'name' | 'date'
+  setSortBy,        // (sort: SortBy) => void
+  filteredProjects, // Project[] - projets filtrés et triés
+  clearSearch,      // () => void - vide la recherche
+  hasActiveFilter,  // boolean - true si recherche active
+} = useProjectFiltering(projects, {
+  initialSortBy: 'name',      // 'name' | 'date' (défaut: 'name')
+  initialSearchQuery: '',     // string (défaut: '')
+});
+```
+
+### useAsync
+
+Gestion des états asynchrones avec loading/error.
+
+```typescript
+const { data, loading, error, execute } = useAsync(asyncFn);
+```
+
+### useColorMerge
+
+Fusion de couleurs similaires (distance RGB < seuil).
+
+```typescript
+const { mergedColors, merge } = useColorMerge(colors, threshold);
+```
+
+### useClientProfile
+
+Génération du profil client via Gemini API.
+
+```typescript
+const { generate, profile, loading } = useClientProfile(project, apiKey);
+```
+
+---
+
+## État Global (Zustand Stores)
+
+### projectStore
+
+```typescript
+const {
+  projects,           // Project[]
+  loading,            // boolean
+  selectedProjectId,  // string | null
+  fetchProjects,      // (workspacePath) => Promise<void>
+  selectProject,      // (id) => void
+  createProject,      // (data, workspacePath, folderStructure) => Promise<Project>
+  deleteProject,      // (id) => Promise<void>
+  updateProjectLocally, // (project) => void
+} = useProjectStore();
+```
+
+### settingsStore
+
+```typescript
+const {
+  workspacePath,    // string
+  geminiApiKey,     // string
+  geminiModel,      // string
+  folderStructure,  // FolderNode[]
+  updateSettings,   // (partial) => void
+  loadSettings,     // () => Promise<void>
+  isHydrated,       // boolean
+} = useSettingsStore();
+```
+
+### uiStore
+
+```typescript
+const {
+  activeModal,      // string | null
+  openModal,        // (name) => void
+  closeModal,       // () => void
+  notifications,    // Notification[]
+  addNotification,  // (type, message) => void
+} = useUIStore();
+```
+
+---
+
 ## Notes d'implémentation
 
 1. **Tauri vs Electron** : Tauri utilise le WebView natif du système, donc l'app est beaucoup plus légère (~10MB vs ~150MB).
 
-2. **Keychain** : Le crate `keyring` Rust gère le stockage sécurisé des mots de passe dans le Keychain macOS.
+2. **Stockage des credentials** : Les mots de passe FTP sont stockés via `configStore` (Tauri Store) avec obfuscation XOR+Base64. Fichier: `~/Library/Application Support/com.forge.app/credentials.dat`
 
-3. **SFTP** : Pour une implémentation complète, utiliser le crate `ssh2` en Rust ou exécuter les commandes système `sftp`/`scp`.
+3. **SFTP** : Utilise le crate `ssh2` en Rust pour les connexions FTP/SFTP.
 
-4. **Gemini API** : Appelée directement depuis le frontend en JavaScript (pas besoin de passer par Rust).
+4. **Gemini API** : Appelée directement depuis le frontend. Services modulaires dans `src/services/gemini/`.
 
-5. **Filesystem** : Tauri fournit des APIs pour lire/écrire des fichiers avec les permissions appropriées.
+5. **Filesystem** : Tauri fournit des APIs pour lire/écrire des fichiers. Stockage principal via Tauri Plugin Store.
 
 6. **Drag region** : La sidebar a `-webkit-app-region: drag` pour permettre de déplacer la fenêtre.
+
+7. **DnD** : Utilise `@dnd-kit/core` pour le drag & drop (TreeView, ProjectFileTree).
+
+8. **État global** : Zustand pour la gestion d'état (5 stores: project, settings, ui, scraping, sync).
+
+---
+
+## Fonctionnalités v1.0.1
+
+### Fonctionnalités de base
+- **Recherche et tri** : Barre de recherche et boutons de tri dans Sidebar et ProjectList
+- **Génération de brief** : Bouton pour générer un fichier Markdown complet du projet
+- **Menu macOS natif** : Menu en français avec raccourcis clavier
+- **Scraping amélioré** : Progression détaillée, fusion de couleurs similaires
+- **Backup/Restore** : Sauvegarde et restauration des paramètres et credentials
+
+### System Tray (Menu Bar macOS)
+Icône dans la barre de menu macOS avec :
+- **7 projets récents** : Liste des projets triés par date de modification
+- **Actions rapides** : Ouvrir dans Finder ou Synchroniser FTP
+- **Indicateur de sync** : 3 états visuels (normal, syncing, success)
+
+```typescript
+// Hook useSystemTray
+const {
+  isAvailable,           // boolean
+  updateRecentProjects,  // (projects) => Promise<void>
+  setSyncIndicator,      // ('normal' | 'syncing' | 'success') => Promise<void>
+  onOpenFinder,          // (callback) => void
+  onSyncProject,         // (callback) => void
+} = useSystemTray();
+```
+
+### Delta Sync (Synchronisation incrémentale)
+Transfert intelligent qui n'envoie que les portions modifiées des fichiers.
+
+**Caractéristiques** :
+- Taille de chunk : 64KB
+- Seuil minimum : 256KB (fichiers plus petits transférés entièrement)
+- Hash SHA-256 par chunk pour détection des changements
+- Cache de signatures par projet
+
+**Types** :
+```typescript
+type DeltaStatus = 'new' | 'unchanged' | 'modified' | 'smallfile' | 'deleted';
+
+interface DeltaTransferStats {
+  total_files: number;
+  new_files: number;
+  modified_files: number;
+  unchanged_files: number;
+  deleted_files: number;
+  total_size: number;       // Taille totale des fichiers
+  transfer_size: number;    // Taille réellement transférée
+  savings_bytes: number;    // Économie en octets
+  savings_percent: number;  // Pourcentage d'économie
+}
+```
+
+**Module Rust** : `src-tauri/src/delta_sync.rs`
+**Service Frontend** : `src/services/deltaService.ts`
+**Composant** : `src/components/DeltaSyncStats.tsx`
+
+### Version History (Historique des versions)
+Système de snapshots pour sauvegarder et restaurer l'état des fichiers.
+
+**Fonctionnalités** :
+- Création de snapshots avant sync (manuel ou automatique)
+- Comparaison entre snapshots (diff)
+- Restauration complète ou fichier par fichier
+- Message descriptif optionnel par snapshot
+
+**Composant** : `src/components/VersionHistory.tsx`
+**Store** : `src/stores/versionStore.ts`
+**Module Rust** : `src-tauri/src/version_history.rs`
+
+```typescript
+interface SyncSnapshot {
+  id: string;
+  project_id: string;
+  timestamp: string;
+  files: FileVersion[];
+  total_size: number;
+  files_count: number;
+  message?: string;
+}
+
+interface SnapshotDiff {
+  added: string[];
+  modified: string[];
+  deleted: string[];
+  unchanged: string[];
+}
+```
+
+### Scheduler (Planification automatique)
+Planification des synchronisations automatiques avec expressions cron.
+
+**Fréquences disponibles** :
+- Horaire (chaque heure à la minute X)
+- Quotidien (chaque jour à HH:MM)
+- Hebdomadaire (jour de semaine + heure)
+- Mensuel (1er du mois + heure)
+- Personnalisé (expression cron)
+
+**Composant** : `src/components/SyncScheduler.tsx`
+**Store** : `src/stores/scheduleStore.ts`
+**Module Rust** : `src-tauri/src/scheduler.rs`
+
+```typescript
+type ScheduleType = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom';
+
+interface SyncSchedule {
+  project_id: string;
+  enabled: boolean;
+  schedule_type: ScheduleType;
+  cron_expression?: string;
+  next_run?: string;
+  last_run?: string;
+  last_result?: ScheduleResult;
+}
+```
+
+### Project Dashboard (Tableau de bord)
+Vue métrique d'un projet avec statistiques de synchronisation.
+
+**Métriques affichées** :
+- Nombre total de syncs
+- Fichiers uploadés
+- Volume transféré (formaté)
+- Durée moyenne des syncs
+- Taux de succès
+- Répartition par type de fichier
+- Historique des syncs récentes
+
+**Composant** : `src/components/ProjectDashboard.tsx`
+
+### Parallel Sync (Synchronisation parallèle)
+Transfert simultané de plusieurs fichiers via connexions FTP multiples.
+
+**Options** :
+```typescript
+interface SyncOptions {
+  parallel_enabled: boolean;     // Activer le parallélisme
+  parallel_connections: number;  // Nombre de connexions (2-8)
+  create_snapshot: boolean;      // Créer snapshot avant sync
+  snapshot_message?: string;     // Message du snapshot
+}
+```
+
+**Module Rust** : `src-tauri/src/parallel_sync.rs`
+
+### Transfer Resume (Reprise de transfert)
+Reprise automatique des transferts interrompus.
+
+**Module Rust** : `src-tauri/src/transfer_resume.rs`
+**Service Frontend** : `src/services/transferResumeService.ts`
+
+### FTP Log Window (Journal FTP)
+Fenêtre de log en temps réel des opérations FTP.
+
+**Composant** : `src/components/FTPLogWindow.tsx`
+
+```typescript
+type SyncLogLevel = 'info' | 'success' | 'warning' | 'error';
+
+interface SyncLogEntry {
+  id: string;
+  timestamp: number;
+  level: SyncLogLevel;
+  message: string;
+  file?: string;
+  details?: string;
+}
+```
+
+---
+
+## Nouveaux Statuts de Projet
+
+Le workflow de projet a été revu pour mieux refléter le cycle de vie d'un projet de refonte web.
+
+| Ancien statut | Nouveau statut | Couleur |
+|---------------|----------------|---------|
+| - | prospect | Orange (#ffb74d) |
+| active | development | Bleu (#4fc3f7) |
+| paused | review | Violet (#ce93d8) |
+| - | validated | Vert clair (#aed581) |
+| completed | live | Vert (#81c784) |
+| archived | archived | Gris (#90a4ae) |
+
+```typescript
+type ProjectStatus = 'prospect' | 'development' | 'review' | 'validated' | 'live' | 'archived';
+```
+
+---
+
+## Nouvelle Structure de Dossiers Projet
+
+Structure simplifiée pour le workflow de refonte de sites web.
+
+```
+MonProjet/
+├── _Inbox/                    # Dépôt fichiers à analyser
+│   └── scraped/               # Fichiers bruts du scraping
+├── Source/                    # Code source du nouveau site
+├── Documentation/             # Documentation projet
+│   ├── admin/                 # Devis, contrats, factures
+│   ├── textes/                # Contenus textuels
+│   └── notes/                 # Notes et comptes-rendus
+├── Assets/                    # Ressources graphiques
+│   ├── images/                # Images du projet
+│   └── design/                # Maquettes, wireframes
+├── References/                # Ancien site client
+│   ├── images/                # Images récupérées
+│   └── styles/                # CSS, couleurs, polices
+├── www/                       # Dossier déploiement FTP
+│   ├── css/                   # Feuilles de style
+│   └── js/                    # Scripts JavaScript
+└── .project-config.json       # Configuration projet
+```
+
+---
+
+## Nouveaux Champs Projet
+
+```typescript
+interface Project {
+  // ... champs existants
+
+  // URLs révisées
+  urls: {
+    currentSite?: string;    // URL du site actuel (ancien site client)
+    testUrl?: string;        // URL de test/prévisualisation
+    staging?: string;
+    local?: string;
+    production?: string;     // @deprecated
+  };
+
+  // Sites de référence graphique (max 5)
+  referenceWebsites: ReferenceWebsite[];
+
+  // Profil client IA
+  clientDescription?: string;    // Description activité client
+  themeTags?: string[];          // Tags de thème/design
+  themeTagsGeneratedAt?: string; // Date génération tags
+}
+
+interface ReferenceWebsite {
+  url: string;
+  name?: string;
+  addedAt: string;
+}
+```
+
+---
+
+## Nouveaux Stores Zustand
+
+### syncStore (mis à jour)
+
+```typescript
+const {
+  // État
+  stage,                // SyncStage: 'idle' | 'connecting' | 'retrying' | 'analyzing' | 'uploading' | 'complete' | 'error' | 'cancelled'
+  progress,             // number 0-100
+  currentFile,          // string | null
+  filesTotal,
+  filesCompleted,
+  files,                // SyncFileProgress[]
+  logs,                 // SyncLogEntry[]
+  failedFiles,          // SyncFailedFile[]
+  error,                // string | null
+  retry,                // RetryState
+  lastConnectionFailed, // boolean - true si dernière connexion a timeout
+  lastConnectionAttempt, // number | null - timestamp de la dernière tentative
+
+  // Actions
+  getSyncState,         // (projectId) => SyncState
+  canStartSync,         // (projectId) => { allowed: boolean; reason?: string }
+  startSync,            // (project, onComplete?) => Promise<void>
+  previewSync,          // (project) => Promise<FileDiff[]>
+  resetSync,            // (projectId) => void
+  cancelSync,           // (projectId) => Promise<void>
+  clearConnectionError, // (projectId) => void - réinitialise l'état de connexion
+  addLog,               // (projectId, entry) => void
+  clearLogs,            // (projectId) => void
+  retryFailedFile,      // (projectId, filePath) => void
+} = useSyncStore();
+```
+
+**Protection contre le blocage UI** :
+- `canStartSync()` vérifie si une sync peut démarrer (pas de sync en cours, pas en cooldown)
+- Cooldown de 5 secondes après un timeout de connexion
+- `clearConnectionError()` permet de réinitialiser manuellement l'état
+
+### versionStore
+
+```typescript
+const {
+  snapshots,           // Record<string, SnapshotSummary[]>
+  selectedSnapshot,    // SyncSnapshot | null
+  loading,
+  error,
+
+  loadSnapshots,       // (projectId) => Promise<void>
+  createSnapshot,      // (projectId, localPath, message?) => Promise<SyncSnapshot>
+  getSnapshotDetails,  // (projectId, snapshotId) => Promise<SyncSnapshot>
+  restoreVersion,      // (projectId, snapshotId, localPath, files?) => Promise<string[]>
+  compareSnapshots,    // (projectId, id1, id2) => Promise<SnapshotDiff>
+  deleteSnapshot,      // (projectId, snapshotId) => Promise<void>
+  clearError,
+} = useVersionStore();
+```
+
+### scheduleStore
+
+```typescript
+const {
+  schedules,           // Record<string, SyncSchedule>
+  loading,
+  error,
+
+  loadSchedules,       // () => Promise<void>
+  setSchedule,         // (schedule) => Promise<SyncSchedule>
+  removeSchedule,      // (projectId) => Promise<void>
+  setEnabled,          // (projectId, enabled) => Promise<void>
+  getSchedule,         // (projectId) => SyncSchedule | undefined
+  clearError,
+} = useScheduleStore();
+```
+
+### hooksStore
+
+```typescript
+const {
+  hooks,               // PostSyncHook[]
+  loading,
+
+  addHook,             // (hook) => void
+  removeHook,          // (id) => void
+  updateHook,          // (id, updates) => void
+  executeHooks,        // (projectId, context) => Promise<void>
+} = useHooksStore();
+```
+
+---
+
+## Modules Rust Ajoutés
+
+| Module | Fichier | Description |
+|--------|---------|-------------|
+| Delta Sync | `delta_sync.rs` | Synchronisation incrémentale par chunks |
+| Version History | `version_history.rs` | Snapshots et restauration |
+| Scheduler | `scheduler.rs` | Planification cron des syncs |
+| Parallel Sync | `parallel_sync.rs` | Transfert multi-connexions |
+| Transfer Resume | `transfer_resume.rs` | Reprise transferts interrompus |
+| Full Site Scraper | `full_site_scraper.rs` | Scraping complet de sites |
+| Tray | `tray.rs` | Gestion du System Tray macOS |
+
+---
+
+## Événements Tauri (Sync Progress)
+
+Événements émis pendant la synchronisation FTP :
+
+```typescript
+type SyncEventType =
+  | 'connecting'      // Connexion au serveur
+  | 'analyzing'       // Analyse des fichiers
+  | 'file_start'      // Début transfert fichier
+  | 'file_progress'   // Progression fichier
+  | 'file_complete'   // Fichier terminé
+  | 'file_error'      // Erreur sur fichier
+  | 'complete'        // Sync terminée
+  | 'error'           // Erreur globale
+  | 'cancelled';      // Annulation
+
+interface SyncProgressEvent {
+  project_id: string;
+  event: SyncEventType;
+  file: string | null;
+  progress: number;           // 0-100 global
+  file_progress: number | null; // 0-100 fichier
+  bytes_sent: number | null;
+  bytes_total: number | null;
+  message: string | null;
+  timestamp: number;
+}
+
+// Écoute des événements
+listen<SyncProgressEvent>('sync-progress', (event) => {
+  console.log(event.payload);
+});
+```
+
+---
+
+## Configuration Tauri mise à jour
+
+```json
+{
+  "package": {
+    "productName": "La Forge",
+    "version": "1.0.1"
+  },
+  "tauri": {
+    "systemTray": {
+      "iconPath": "icons/tray-icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": true
+    },
+    "updater": {
+      "active": true,
+      "dialog": true,
+      "endpoints": ["https://github.com/flagorn-sudo/Laforge/releases/latest/download/latest.json"]
+    },
+    "bundle": {
+      "resources": [
+        "icons/tray-icon.png",
+        "icons/tray-icon-syncing.png",
+        "icons/tray-icon-success.png"
+      ]
+    }
+  }
+}
+```

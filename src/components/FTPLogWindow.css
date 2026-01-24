@@ -1,0 +1,334 @@
+/**
+ * FTPLogWindow Styles
+ * Modal flottante pour les logs de synchronisation FTP
+ */
+
+.ftp-log-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.ftp-log-window {
+  background: var(--bg-primary);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+/* Header */
+.ftp-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.ftp-log-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.ftp-log-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ftp-connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.ftp-log-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.ftp-log-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Current file progress */
+.ftp-current-file {
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.ftp-current-file-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ftp-current-file-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftp-current-file-size {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ftp-file-progress-bar {
+  height: 3px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ftp-file-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.2s ease;
+}
+
+/* Overall progress */
+.ftp-overall-progress {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ftp-progress-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.ftp-progress-bar {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ftp-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+
+.ftp-progress-fill.complete {
+  background: var(--success);
+}
+
+/* Logs container */
+.ftp-logs-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  min-height: 200px;
+  max-height: 400px;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+}
+
+.ftp-logs-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 150px;
+  color: var(--text-secondary);
+  gap: 8px;
+}
+
+.ftp-log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 16px;
+  line-height: 1.4;
+}
+
+.ftp-log-entry:hover {
+  background: var(--bg-secondary);
+}
+
+.ftp-log-entry.error {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.ftp-log-entry.warning {
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.ftp-log-time {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.ftp-log-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-top: 1px;
+}
+
+.ftp-log-message {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.ftp-log-details {
+  color: var(--text-secondary);
+}
+
+/* Failed files section */
+.ftp-failed-files {
+  border-top: 1px solid var(--border);
+  background: rgba(239, 68, 68, 0.05);
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.ftp-failed-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--error);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.1);
+}
+
+.ftp-failed-list {
+  padding: 8px 16px;
+}
+
+.ftp-failed-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.ftp-failed-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.ftp-failed-error {
+  color: var(--text-secondary);
+  font-size: 11px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftp-failed-retry {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.ftp-failed-retry:hover {
+  background: var(--bg-secondary);
+}
+
+/* Error banner */
+.ftp-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error);
+  font-size: 13px;
+  border-top: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* Footer */
+.ftp-log-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.ftp-log-actions-left,
+.ftp-log-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ftp-log-footer button {
+  font-size: 13px;
+}
+
+/* Spinner animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ftp-log-window .spinner {
+  animation: spin 1s linear infinite;
+}

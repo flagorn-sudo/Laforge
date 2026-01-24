@@ -35,8 +35,13 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
+      "resources": [
+        "icons/tray-icon.png",
+        "icons/tray-icon-syncing.png",
+        "icons/tray-icon-success.png"
+      ],
       "identifier": "com.forge.app",
-      "targets": ["app"],
+      "targets": ["app", "dmg"],
       "macOS": {
         "minimumSystemVersion": "10.15"
       }

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Loader, TestTube, ChevronDown, Folder, Wand2, Check, AlertCircle } from 'lucide-react';
+import { Loader, TestTube, ChevronDown, Folder, Wand2, Check, AlertCircle, X } from 'lucide-react';
 import { FTPProtocol } from '../../../types';
 import { Input, Button, Switch } from '../../../components/ui';
+import { ConnectionStage } from '../hooks/useFTPConnection';
 
 const PROTOCOL_CONFIG: Record<
   FTPProtocol,
@@ -35,12 +36,15 @@ interface FTPSectionProps {
   testResult: 'success' | 'error' | null;
   remoteFolders: string[];
   loadingFolders: boolean;
+  connectionStage?: ConnectionStage;
+  elapsedSeconds?: number;
   onSftpChange: (sftp: FTPFormData) => void;
   onLocalPathChange: (path: string) => void;
   onTestUrlChange: (url: string) => void;
   onSavePasswordChange: (save: boolean) => void;
   onTestConnection: () => void;
   onResetTestResult: () => void;
+  onCancelConnection?: () => void;
 }
 
 export function FTPSection({
@@ -52,18 +56,42 @@ export function FTPSection({
   testResult,
   remoteFolders,
   loadingFolders,
+  connectionStage,
+  elapsedSeconds = 0,
   onSftpChange,
   onLocalPathChange,
   onTestUrlChange,
   onSavePasswordChange,
   onTestConnection,
   onResetTestResult,
+  onCancelConnection,
 }: FTPSectionProps) {
   const [showFolderSelect, setShowFolderSelect] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [parsing, setParsing] = useState(false);
   const [parseSuccess, setParseSuccess] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+
+  // Normalize URL: add https:// if protocol is missing
+  const normalizeUrl = (url: string): string => {
+    if (!url || url.trim() === '') return '';
+    const trimmed = url.trim();
+    // Already has protocol
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+    // Add https:// by default
+    return `https://${trimmed}`;
+  };
+
+  const handleTestUrlBlur = () => {
+    if (testUrl && testUrl.trim()) {
+      const normalized = normalizeUrl(testUrl);
+      if (normalized !== testUrl) {
+        onTestUrlChange(normalized);
+      }
+    }
+  };
 
   const handleProtocolChange = (protocol: FTPProtocol) => {
     const defaultPort = PROTOCOL_CONFIG[protocol].defaultPort;
@@ -168,19 +196,24 @@ export function FTPSection({
     }
 
     const urlPatterns = [
-      // Patterns explicites avec label
-      /(?:url\s*(?:de\s*)?(?:test|pr[ée]visualisation|preview|staging|temp)|lien\s*(?:de\s*)?(?:test|pr[ée]visualisation|preview)|test\s*url|preview\s*url|url\s*du\s*site|site\s*url|url)\s*[:\-=]\s*(https?:\/\/[^\s\n,;]+)/i,
-      // URL contenant des mots-clés de test
-      /(?:https?:\/\/[^\s\n,;]*(?:temp|test|staging|preview|dev|preprod)[^\s\n,;]*)/i,
+      // Patterns explicites avec label - avec ou sans protocol
+      /(?:url\s*(?:de\s*)?(?:test|pr[ée]visualisation|preview|staging|temp)|lien\s*(?:de\s*)?(?:test|pr[ée]visualisation|preview)|test\s*url|preview\s*url|url\s*du\s*site|site\s*url|url)\s*[:\-=]\s*((?:https?:\/\/)?[a-z0-9][\w.-]*\.[a-z]{2,}[^\s\n,;]*)/i,
+      // URL contenant des mots-clés de test - avec ou sans protocol
+      /((?:https?:\/\/)?[a-z0-9][\w.-]*(?:temp|test|staging|preview|dev|preprod)[^\s\n,;]*\.[a-z]{2,}[^\s\n,;]*)/i,
+      /((?:https?:\/\/)?(?:temp|test|staging|preview|dev|preprod)[.-][a-z0-9][\w.-]*\.[a-z]{2,}[^\s\n,;]*)/i,
       // Toute URL http/https qui n'est pas un serveur FTP
       /(?:https?:\/\/(?!ftp\.)[^\s\n,;]+)/i,
     ];
     for (const pattern of urlPatterns) {
       const match = normalizedText.match(pattern);
       if (match && !result.testUrl) {
-        const url = match[1] ? match[1].trim() : match[0].trim();
+        let url = match[1] ? match[1].trim() : match[0].trim();
         // Éviter de capturer le host FTP comme URL de test
         if (!url.includes('ftp.') && !url.includes(':21') && !url.includes(':22')) {
+          // Normalize: add https:// if missing
+          if (!/^https?:\/\//i.test(url)) {
+            url = `https://${url}`;
+          }
           result.testUrl = url;
           break;
         }
@@ -324,19 +357,45 @@ export function FTPSection({
           )}
 
           <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={onTestConnection}
-              disabled={!isFtpValid || testing}
-            >
-              {testing ? <Loader className="spinner" size={16} /> : <TestTube size={16} />}
-              Tester
-            </Button>
-            {testResult && (
-              <span className={`test-badge ${testResult}`}>
-                {testResult === 'success' ? 'Connexion OK' : 'Échec'}
-              </span>
+            {testing ? (
+              <div className="connection-progress">
+                <Loader className="spinner" size={16} />
+                <span className="connection-progress-text">
+                  Connexion en cours... ({elapsedSeconds}s)
+                </span>
+                {onCancelConnection && (
+                  <button
+                    type="button"
+                    className="connection-cancel-btn"
+                    onClick={onCancelConnection}
+                    title="Annuler"
+                  >
+                    <X size={16} />
+                    Annuler
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={onTestConnection}
+                  disabled={!isFtpValid}
+                >
+                  <TestTube size={16} />
+                  Tester
+                </Button>
+                {testResult && (
+                  <span className={`test-badge ${testResult}`}>
+                    {connectionStage === 'timeout'
+                      ? 'Timeout (15s)'
+                      : testResult === 'success'
+                      ? 'Connexion OK'
+                      : 'Échec'}
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -407,7 +466,8 @@ export function FTPSection({
                 label="URL de test"
                 value={testUrl || ''}
                 onChange={(e) => onTestUrlChange(e.target.value)}
-                placeholder="https://test.example.com"
+                onBlur={handleTestUrlBlur}
+                placeholder="test.example.com"
               />
             </div>
           </div>

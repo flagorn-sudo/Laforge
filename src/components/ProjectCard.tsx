@@ -2,15 +2,36 @@ import { useState } from 'react';
 import { Folder, Globe, CheckCircle, XCircle, AlertCircle, RefreshCw, Loader, ChevronDown } from 'lucide-react';
 import { Project, PROJECT_STATUS_CONFIG, ProjectStatus } from '../types';
 import { projectService } from '../services/projectService';
+import { SyncStatusBadge } from './SyncStatusBadge';
+import { SyncStage, RetryState } from '../stores/syncStore';
+
+interface SyncState {
+  stage: SyncStage;
+  progress: number;
+  filesTotal: number;
+  filesCompleted: number;
+  retry: RetryState;
+}
 
 interface ProjectCardProps {
   project: Project;
   onClick: () => void;
   onSync?: (project: Project) => Promise<void>;
   onStatusChange?: (project: Project, status: ProjectStatus) => Promise<void>;
+  syncState?: SyncState;
+  onCancelSync?: () => void;
+  onRetrySync?: () => void;
 }
 
-export function ProjectCard({ project, onClick, onSync, onStatusChange }: ProjectCardProps) {
+export function ProjectCard({
+  project,
+  onClick,
+  onSync,
+  onStatusChange,
+  syncState,
+  onCancelSync,
+  onRetrySync,
+}: ProjectCardProps) {
   const [syncing, setSyncing] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const statusConfig = PROJECT_STATUS_CONFIG[project.status];
@@ -18,9 +39,13 @@ export function ProjectCard({ project, onClick, onSync, onStatusChange }: Projec
   // Use currentSite if available, fallback to production for legacy support
   const siteUrl = project.urls.currentSite || project.urls.production;
 
+  // Check if sync is active from syncState
+  const isSyncActive = syncState && syncState.stage !== 'idle' && syncState.stage !== 'complete' && syncState.stage !== 'error';
+  const showSyncBadge = syncState && syncState.stage !== 'idle';
+
   const handleSync = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!onSync || syncing) return;
+    if (!onSync || syncing || isSyncActive) return;
 
     setSyncing(true);
     try {
@@ -131,10 +156,10 @@ export function ProjectCard({ project, onClick, onSync, onStatusChange }: Projec
           <button
             className="card-action sync-btn"
             onClick={handleSync}
-            disabled={syncing}
+            disabled={syncing || isSyncActive}
             title="Synchroniser avec le serveur"
           >
-            {syncing ? (
+            {(syncing || isSyncActive) ? (
               <Loader size={16} className="spinner" />
             ) : (
               <RefreshCw size={16} />
@@ -143,6 +168,21 @@ export function ProjectCard({ project, onClick, onSync, onStatusChange }: Projec
           </button>
         )}
       </div>
+
+      {/* Sync status badge */}
+      {showSyncBadge && syncState && (
+        <div className="card-sync-status">
+          <SyncStatusBadge
+            stage={syncState.stage}
+            progress={syncState.progress}
+            filesTotal={syncState.filesTotal}
+            filesCompleted={syncState.filesCompleted}
+            retry={syncState.retry}
+            onCancel={onCancelSync}
+            onRetry={onRetrySync}
+          />
+        </div>
+      )}
     </div>
   );
 }

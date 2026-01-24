@@ -1,6 +1,54 @@
 import { invoke } from '@tauri-apps/api/tauri';
-import { SFTPConfig, FileDiff, Project } from '../types';
+import { SFTPConfig, FileDiff, Project, SyncOptions } from '../types';
 import { configStore } from './configStore';
+
+// Timeout configuration
+const TIMEOUTS = {
+  connection: 15000,    // 15s for connection test
+  diff: 30000,          // 30s for file diff
+  sync: 300000,         // 5min for full sync (can be long with many files)
+  list: 20000,          // 20s for listing files
+};
+
+/**
+ * Wrapper to add timeout to any Promise
+ * Prevents UI from hanging if Rust backend doesn't respond
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  operation: string
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Timeout: ${operation} a depassé ${timeoutMs / 1000}s`));
+      }, timeoutMs);
+    }),
+  ]);
+}
+
+// Track ongoing operations to prevent duplicates
+const ongoingOperations = new Map<string, boolean>();
+
+/**
+ * Check if an operation is already in progress
+ */
+function isOperationInProgress(key: string): boolean {
+  return ongoingOperations.get(key) === true;
+}
+
+/**
+ * Mark operation as started/finished
+ */
+function setOperationState(key: string, inProgress: boolean): void {
+  if (inProgress) {
+    ongoingOperations.set(key, true);
+  } else {
+    ongoingOperations.delete(key);
+  }
+}
 
 // Create a safe key for credential storage
 function sanitizeKeyForStorage(projectId: string): string {
@@ -22,25 +70,113 @@ function sanitizeKeyForStorage(projectId: string): string {
 }
 
 export const sftpService = {
+  /**
+   * Test FTP/SFTP connection with timeout protection
+   */
   async testConnection(config: SFTPConfig): Promise<boolean> {
+    const opKey = `test_${config.host}`;
+
+    // Prevent duplicate connection tests
+    if (isOperationInProgress(opKey)) {
+      console.warn('[sftpService] Connection test already in progress');
+      return false;
+    }
+
+    setOperationState(opKey, true);
+
     try {
-      return await invoke('sftp_test_connection', { config });
+      const result = await withTimeout(
+        invoke('sftp_test_connection', { config }),
+        TIMEOUTS.connection,
+        'Test de connexion FTP'
+      );
+      return result as boolean;
     } catch (error) {
       console.error('SFTP connection test failed:', error);
       return false;
+    } finally {
+      setOperationState(opKey, false);
     }
   },
 
+  /**
+   * List remote files with timeout protection
+   */
   async listRemoteFiles(config: SFTPConfig, path: string): Promise<string[]> {
-    return await invoke('sftp_list_files', { config, path });
+    return await withTimeout(
+      invoke('sftp_list_files', { config, path }),
+      TIMEOUTS.list,
+      'Listing des fichiers distants'
+    );
   },
 
+  /**
+   * Get diff between local and remote with timeout protection
+   */
   async getDiff(localPath: string, config: SFTPConfig): Promise<FileDiff[]> {
-    return await invoke('sftp_get_diff', { localPath, config });
+    return await withTimeout(
+      invoke('sftp_get_diff', { localPath, config }),
+      TIMEOUTS.diff,
+      'Analyse des différences'
+    );
   },
 
+  /**
+   * Basic sync without events
+   */
   async sync(localPath: string, config: SFTPConfig, dryRun = false): Promise<FileDiff[]> {
-    return await invoke('sftp_sync', { localPath, config, dryRun });
+    return await withTimeout(
+      invoke('sftp_sync', { localPath, config, dryRun, projectId: '', appHandle: null }),
+      TIMEOUTS.sync,
+      'Synchronisation FTP'
+    );
+  },
+
+  /**
+   * Sync with project ID for real-time event emission
+   * The Rust backend will emit sync-progress events with this projectId
+   * Protected by timeout and duplicate operation check
+   */
+  async syncWithEvents(
+    localPath: string,
+    config: SFTPConfig,
+    projectId: string,
+    dryRun = false,
+    options?: SyncOptions
+  ): Promise<FileDiff[]> {
+    const opKey = `sync_${projectId}`;
+
+    // Prevent duplicate syncs
+    if (isOperationInProgress(opKey)) {
+      throw new Error('Une synchronisation est deja en cours pour ce projet');
+    }
+
+    setOperationState(opKey, true);
+
+    try {
+      return await withTimeout(
+        invoke('sftp_sync', { localPath, config, dryRun, projectId, options }),
+        TIMEOUTS.sync,
+        'Synchronisation FTP'
+      );
+    } finally {
+      setOperationState(opKey, false);
+    }
+  },
+
+  /**
+   * Check if a sync is currently in progress for a project
+   */
+  isSyncInProgress(projectId: string): boolean {
+    return isOperationInProgress(`sync_${projectId}`);
+  },
+
+  /**
+   * Force clear an operation lock (for recovery from stuck states)
+   */
+  clearOperationLock(projectId: string): void {
+    setOperationState(`sync_${projectId}`, false);
+    setOperationState(`test_${projectId}`, false);
   },
 
   async saveCredentials(projectId: string, password: string): Promise<void> {

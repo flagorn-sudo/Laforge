@@ -20,6 +20,11 @@
   background: rgba(239, 68, 68, 0.05);
 }
 
+.sync-progress.retrying {
+  border-color: var(--warning);
+  background: rgba(255, 183, 77, 0.05);
+}
+
 /* Header */
 .sync-progress-header {
   display: flex;
@@ -44,6 +49,11 @@
 .sync-progress-icon.analyzing,
 .sync-progress-icon.uploading {
   background: var(--accent);
+  color: white;
+}
+
+.sync-progress-icon.retrying {
+  background: var(--warning);
   color: white;
 }
 
@@ -81,6 +91,29 @@
 .sync-complete-message {
   font-size: 13px;
   color: var(--success);
+}
+
+.sync-retry-info {
+  display: block;
+  font-size: 12px;
+  color: var(--warning);
+}
+
+.sync-retry-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 183, 77, 0.1);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.sync-retry-error svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .sync-close-btn {

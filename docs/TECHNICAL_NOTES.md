@@ -1,6 +1,6 @@
 # Notes Techniques - Forge App
 
-## Dernière mise à jour: 2026-01-18
+## Dernière mise à jour: 2026-01-19
 
 ---
 
@@ -313,15 +313,88 @@ src/
 │   ├── ui/
 │   │   ├── TreeView.tsx      # DnD avec dnd-kit (Settings)
 │   │   └── TreeViewUtils.ts  # Utilitaires arbre
+│   ├── Sidebar.tsx           # Navigation + recherche/tri
+│   ├── ProjectList.tsx       # Liste projets + filtres
 │   └── ProjectDetail.tsx     # Détail projet + FTP form
 ├── features/
 │   └── projects/
 │       └── components/
-│           └── ProjectFileTree.tsx  # Explorateur fichiers (HTML5 DnD → dnd-kit)
+│           └── ProjectFileTree.tsx  # Explorateur fichiers (dnd-kit)
 ├── services/
 │   ├── configStore.ts        # Wrapper Tauri Store
 │   ├── projectService.ts     # Gestion projets
 │   └── sftpService.ts        # FTP/SFTP
+├── hooks/
+│   ├── useProjectFiltering.ts # Filtrage/tri projets (centralisé)
+│   └── ...
 └── stores/
     └── projectStore.ts       # Zustand store
 ```
+
+---
+
+## Refactoring Effectué (2026-01-19)
+
+### Extraction du hook useProjectFiltering
+
+**Problème**: Logique de filtrage/tri dupliquée dans `Sidebar.tsx` et `ProjectList.tsx`.
+
+**Solution**: Création d'un hook centralisé `useProjectFiltering`.
+
+**Fichiers créés**:
+- `src/hooks/useProjectFiltering.ts` - Hook avec state et logique mémoïsée
+
+**Fichiers modifiés**:
+- `src/hooks/index.ts` - Export du nouveau hook
+- `src/components/Sidebar.tsx` - Utilise le hook
+- `src/components/ProjectList.tsx` - Utilise le hook
+
+**API du hook**:
+```typescript
+const {
+  searchQuery,      // Terme de recherche
+  setSearchQuery,   // Setter
+  sortBy,           // 'name' | 'date'
+  setSortBy,        // Setter
+  filteredProjects, // Projets filtrés et triés
+  clearSearch,      // Vide la recherche
+  hasActiveFilter,  // true si recherche active
+} = useProjectFiltering(projects, { initialSortBy: 'name' });
+```
+
+**Avantages**:
+- Code DRY (Don't Repeat Yourself)
+- Logique testable isolément
+- Comportement cohérent entre les deux vues
+- Facile à étendre (ex: filtrer par statut)
+
+---
+
+## Nouvelles Fonctionnalités (2026-01-19)
+
+### Recherche et tri dans Sidebar et ProjectList
+
+- Barre de recherche avec icône
+- Boutons de tri (nom A-Z, date récente)
+- Compteur de projets filtrés
+- État "Aucun résultat" si recherche vide
+- Liste scrollable dans la Sidebar
+
+**CSS ajouté** (`globals.css`):
+- `.filter-bar`, `.search-input`, `.sort-buttons` (ProjectList)
+- `.sidebar-filter-bar`, `.sidebar-search`, `.sidebar-sort-buttons` (Sidebar)
+- `.sidebar-projects-list` (scroll)
+- `.sidebar-no-results` (état vide)
+
+---
+
+## À Planifier
+
+### Revoir système d'affichage des projets
+
+La sidebar actuelle duplique la liste de projets de la vue centrale. Options à évaluer:
+1. Supprimer la sidebar
+2. Sidebar minimale (logo + actions)
+3. Sidebar contextuelle (infos projet sélectionné)
+
+Voir `TODO.md` pour plus de détails.

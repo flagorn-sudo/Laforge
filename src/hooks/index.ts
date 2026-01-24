@@ -32,7 +32,7 @@ export type { ClientProfileResult, UseClientProfileResult } from './useClientPro
 
 // System tray
 export { useSystemTray } from './useSystemTray';
-export type { UseSystemTrayResult } from './useSystemTray';
+export type { TrayIconState, UseSystemTrayResult } from './useSystemTray';
 
 // Native menu events
 export { useMenuEvents } from './useMenuEvents';
@@ -41,3 +41,18 @@ export type { MenuEventHandlers } from './useMenuEvents';
 // File watcher
 export { useFileWatcher } from './useFileWatcher';
 export type { UseFileWatcherOptions, UseFileWatcherResult } from './useFileWatcher';
+
+// Project filtering and sorting
+export { useProjectFiltering } from './useProjectFiltering';
+export type { SortBy, UseProjectFilteringOptions, UseProjectFilteringResult } from './useProjectFiltering';
+
+// Filter preferences with persistence
+export { useFilterPreferences } from './useFilterPreferences';
+export type { FilterPreferences, UseFilterPreferencesResult } from './useFilterPreferences';
+
+// Retry countdown for sync
+export { useRetryCountdown } from './useRetryCountdown';
+
+// Sync events from Tauri backend
+export { useSyncEvents } from './useSyncEvents';
+export type { UseSyncEventsOptions, UseSyncEventsResult } from './useSyncEvents';

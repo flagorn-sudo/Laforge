@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Save, Check } from 'lucide-react';
 import { Settings as SettingsType, AutoOrganizeSettings, Project } from '../types';
 import { Modal, Button, Tabs, treeToFlat } from './ui';
@@ -11,6 +11,7 @@ import {
   MacOSSettingsSection,
   BackupSection,
 } from '../features/settings/components';
+import { useSettingsStore } from '../stores';
 import { useFolderTree } from '../features/settings/hooks/useFolderTree';
 
 const DEFAULT_AUTO_ORGANIZE: AutoOrganizeSettings = {
@@ -47,6 +48,15 @@ export function Settings({
   const [showMenuBarIcon, setShowMenuBarIcon] = useState(settings.showMenuBarIcon ?? true);
   const [saved, setSaved] = useState(false);
 
+  // Sync local state with store state when it changes (e.g., after backup import)
+  useEffect(() => {
+    setWorkspacePath(settings.workspacePath);
+    setGeminiApiKey(settings.geminiApiKey || '');
+    setGeminiModel(settings.geminiModel || '');
+    setAutoOrganize(settings.autoOrganize || DEFAULT_AUTO_ORGANIZE);
+    setShowMenuBarIcon(settings.showMenuBarIcon ?? true);
+  }, [settings.workspacePath, settings.geminiApiKey, settings.geminiModel, settings.autoOrganize, settings.showMenuBarIcon]);
+
   // Auto-save callback for folder structure changes
   const handleFolderAutoSave = useCallback((flatStructure: string[]) => {
     onUpdate({ folderStructure: flatStructure });
@@ -68,7 +78,7 @@ export function Settings({
     setAutoOrganize((prev) => ({ ...prev, ...partial }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const folderStructure = treeToFlat(treeNodes);
     onUpdate({
       workspacePath,
@@ -78,6 +88,10 @@ export function Settings({
       autoOrganize,
       showMenuBarIcon,
     });
+
+    // Force immediate save to disk (bypass debounce for critical settings)
+    await useSettingsStore.getState().saveSettingsImmediate();
+
     onSave();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);

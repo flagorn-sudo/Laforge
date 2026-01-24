@@ -87,6 +87,12 @@ export interface FileDiff {
   remoteSize?: number;
 }
 
+export interface FilterPreferences {
+  filterBarOpen: boolean;
+  statusFilters: ProjectStatus[];
+  sortBy: 'name' | 'date';
+}
+
 export interface Settings {
   workspacePath: string;
   geminiApiKey?: string;
@@ -94,6 +100,8 @@ export interface Settings {
   folderStructure: string[];
   autoOrganize?: AutoOrganizeSettings;
   showMenuBarIcon?: boolean;
+  viewMode?: 'grid' | 'list';
+  filterPreferences?: FilterPreferences;
 }
 
 export interface AutoOrganizeSettings {
@@ -203,4 +211,226 @@ export function migrateProjectStatus(status: string): ProjectStatus {
     paused: 'review',
   };
   return statusMigration[status] || (status as ProjectStatus) || 'prospect';
+}
+
+// ============================================
+// Sync Progress Event Types
+// ============================================
+
+export type SyncEventType =
+  | 'connecting'
+  | 'analyzing'
+  | 'file_start'
+  | 'file_progress'
+  | 'file_complete'
+  | 'file_error'
+  | 'complete'
+  | 'error'
+  | 'cancelled';
+
+export interface SyncProgressEvent {
+  project_id: string;
+  event: SyncEventType;
+  file: string | null;
+  progress: number;          // 0-100 overall progress
+  file_progress: number | null; // 0-100 for current file
+  bytes_sent: number | null;
+  bytes_total: number | null;
+  message: string | null;
+  timestamp: number;
+}
+
+export type SyncLogLevel = 'info' | 'success' | 'warning' | 'error';
+
+export interface SyncLogEntry {
+  id: string;
+  timestamp: number;
+  level: SyncLogLevel;
+  message: string;
+  file?: string;
+  details?: string;
+}
+
+export interface SyncFailedFile {
+  path: string;
+  error: string;
+  timestamp: number;
+  retryCount: number;
+}
+
+// ============================================
+// Version History Types
+// ============================================
+
+export interface FileVersion {
+  id: string;
+  path: string;
+  hash: string;
+  size: number;
+  modified: string;
+  sync_id: string;
+  backup_path?: string;
+}
+
+export interface SyncSnapshot {
+  id: string;
+  project_id: string;
+  timestamp: string;
+  files: FileVersion[];
+  total_size: number;
+  files_count: number;
+  message?: string;
+}
+
+export interface SnapshotSummary {
+  id: string;
+  timestamp: string;
+  files_count: number;
+  total_size: number;
+  message?: string;
+}
+
+export interface SnapshotDiff {
+  added: string[];
+  modified: string[];
+  deleted: string[];
+  unchanged: string[];
+}
+
+// ============================================
+// Scheduler Types
+// ============================================
+
+export type ScheduleType = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom';
+
+export interface SyncSchedule {
+  project_id: string;
+  enabled: boolean;
+  schedule_type: ScheduleType;
+  cron_expression?: string;
+  next_run?: string;
+  last_run?: string;
+  last_result?: ScheduleResult;
+}
+
+export interface ScheduleResult {
+  success: boolean;
+  timestamp: string;
+  files_synced: number;
+  error?: string;
+}
+
+export interface ScheduleEvent {
+  project_id: string;
+  schedule_type: string;
+  timestamp: number;
+}
+
+// ============================================
+// Sync Options Types
+// ============================================
+
+export interface SyncOptions {
+  parallel_enabled: boolean;
+  parallel_connections: number;
+  create_snapshot: boolean;
+  snapshot_message?: string;
+}
+
+export interface SyncConfig {
+  parallel_enabled: boolean;
+  parallel_connections: number;
+  auto_snapshot: boolean;
+}
+
+// ============================================
+// Dashboard Stats Types
+// ============================================
+
+export interface ProjectStats {
+  totalSyncs: number;
+  lastSyncDate?: string;
+  totalFilesUploaded: number;
+  totalBytesTransferred: number;
+  averageSyncDuration: number;
+  syncHistory: SyncHistoryEntry[];
+  fileTypeBreakdown: Record<string, number>;
+}
+
+export interface SyncHistoryEntry {
+  id: string;
+  timestamp: string;
+  filesCount: number;
+  bytesTransferred: number;
+  duration: number;
+  success: boolean;
+  error?: string;
+}
+
+export interface AgencyStats {
+  totalProjects: number;
+  activeProjects: number;
+  totalSyncs: number;
+  totalBytesTransferred: number;
+  projectsByStatus: Record<ProjectStatus, number>;
+  recentActivity: ActivityEntry[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  type: 'sync' | 'create' | 'update' | 'scrape';
+  projectId: string;
+  projectName: string;
+  timestamp: string;
+  details?: string;
+}
+
+// ============================================
+// Delta Sync Types
+// ============================================
+
+export type DeltaStatus = 'new' | 'unchanged' | 'modified' | 'smallfile' | 'deleted';
+
+export interface ChunkHash {
+  index: number;
+  offset: number;
+  size: number;
+  hash: string;
+}
+
+export interface FileSignature {
+  path: string;
+  total_size: number;
+  full_hash: string;
+  chunk_size: number;
+  chunk_hashes: ChunkHash[];
+  modified_at: string;
+  created_at: string;
+}
+
+export interface SignatureCache {
+  project_id: string;
+  signatures: Record<string, FileSignature>;
+  updated_at: string;
+}
+
+export interface FileDelta {
+  path: string;
+  status: DeltaStatus;
+  total_size: number;
+  transfer_size: number;
+  changed_chunks: number[];
+  savings_percent: number;
+}
+
+export interface DeltaTransferStats {
+  total_files: number;
+  new_files: number;
+  modified_files: number;
+  unchanged_files: number;
+  deleted_files: number;
+  total_size: number;
+  transfer_size: number;
+  savings_bytes: number;
+  savings_percent: number;
 }

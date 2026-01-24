@@ -38,6 +38,9 @@ interface ProjectState {
   ) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
 
+  // Local update (optimistic - no disk I/O)
+  updateProjectLocally: (project: Project) => void;
+
   // Computed
   getSelectedProject: () => Project | undefined;
 }
@@ -62,15 +65,47 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   stopEditing: () => set({ isEditing: false, editingProjectId: null }),
 
   fetchProjects: async (workspacePath: string) => {
+    // Protection: Don't clear projects if workspacePath is empty
     if (!workspacePath) {
-      set({ projects: [], loading: false });
+      console.warn('[ProjectStore] fetchProjects called with empty workspacePath - skipping');
+      set({ loading: false });
       return;
     }
 
-    // Block fetch if editing is in progress to prevent overwriting unsaved changes
-    const { isEditing, editingProjectId } = get();
-    if (isEditing) {
-      console.warn('[ProjectStore] Fetch blocked: editing in progress for project', editingProjectId);
+    const { isEditing, editingProjectId, projects } = get();
+
+    // If editing is in progress, use merge strategy instead of blocking
+    if (isEditing && editingProjectId) {
+      console.log('[ProjectStore] Fetch during editing - will merge');
+      const editingProject = projects.find(p => p.id === editingProjectId);
+
+      set({ loading: true, error: null });
+      try {
+        const fetchedProjects = await projectService.scanProjects(workspacePath);
+
+        // Merge: keep the project being edited from local state
+        const merged = fetchedProjects.map(p =>
+          p.id === editingProjectId && editingProject ? editingProject : p
+        );
+
+        // Verify FTP credentials for configured projects
+        const configuredProjects = merged.filter(p => p.sftp.configured);
+        if (configuredProjects.length > 0) {
+          const credentialsMap = await sftpService.verifyCredentials(
+            configuredProjects.map(p => p.id)
+          );
+          merged.forEach(p => {
+            if (p.sftp.configured) {
+              p.sftp.passwordAvailable = credentialsMap.get(p.id) ?? false;
+            }
+          });
+        }
+
+        set({ projects: merged, loading: false });
+      } catch (err) {
+        console.error('[ProjectStore] Error fetching projects during editing:', err);
+        set({ loading: false });
+      }
       return;
     }
 
@@ -163,6 +198,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       projects: state.projects.filter((p) => p.id !== projectId),
       selectedProjectId:
         state.selectedProjectId === projectId ? null : state.selectedProjectId,
+    }));
+  },
+
+  updateProjectLocally: (project: Project) => {
+    set((state) => ({
+      projects: state.projects.map((p) =>
+        p.id === project.id ? { ...p, ...project } : p
+      ),
     }));
   },
 

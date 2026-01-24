@@ -1,0 +1,585 @@
+/* Scraping Panel - Single Page Layout */
+
+.scraping-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 20px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Section Container */
+.scraping-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.scraping-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.scraping-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+}
+
+.scraping-section-header .scraping-section-title {
+  margin-bottom: 0;
+}
+
+.scraping-section-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+/* Icon colors */
+.icon-success {
+  color: var(--success);
+}
+
+.icon-error {
+  color: var(--error);
+}
+
+.inline-icon {
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* URL Input */
+.scraping-url-input {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.scraping-url-input .form-input {
+  flex: 1;
+}
+
+/* Options */
+.scraping-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Meta info (date, url) */
+.scraping-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.scraping-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.scraping-meta-item a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.scraping-meta-item a:hover {
+  text-decoration: underline;
+}
+
+/* Stats Row */
+.scraping-stats-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.scraping-stat-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.scraping-stat-card .stat-icon {
+  color: var(--accent-blue);
+  margin-bottom: 4px;
+}
+
+.scraping-stat-card .stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.scraping-stat-card .stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+/* Progress Bar */
+.scraping-progress {
+  margin-bottom: 20px;
+}
+
+.scraping-progress-bar {
+  height: 10px;
+  background: var(--bg-tertiary);
+  border-radius: 5px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.scraping-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-blue), #60a5fa);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.scraping-progress-text {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Logs Section */
+.scraping-logs-section {
+  margin-bottom: 16px;
+}
+
+.scraping-logs-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 8px 0;
+}
+
+.scraping-logs {
+  height: 200px;
+  overflow-y: auto;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 11px;
+}
+
+.scraping-log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+
+.scraping-log-item:hover {
+  background: var(--bg-secondary);
+}
+
+.scraping-log-item .log-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.scraping-log-item.page .log-icon {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.scraping-log-item.image .log-icon {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+}
+
+.scraping-log-item.css .log-icon {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.scraping-log-item.success .log-icon {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.scraping-log-item.error .log-icon {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.scraping-log-item .log-time {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  min-width: 60px;
+}
+
+.scraping-log-item .log-message {
+  flex: 1;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.scraping-log-item.success .log-message {
+  color: #22c55e;
+}
+
+.scraping-log-item.error .log-message {
+  color: #ef4444;
+}
+
+/* Scrollbar for logs */
+.scraping-logs::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scraping-logs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scraping-logs::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.scraping-logs::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* Colors */
+.scraping-colors {
+  margin-bottom: 16px;
+}
+
+.scraping-colors-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.scraping-colors-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.scraping-color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.scraping-color-swatch:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Fonts */
+.scraping-fonts {
+  margin-bottom: 16px;
+}
+
+.scraping-fonts-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.scraping-fonts-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scraping-font-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+/* Actions */
+.scraping-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+/* Small button modifier */
+.btn-sm {
+  padding: 4px 8px !important;
+  font-size: 13px !important;
+}
+
+/* Danger button modifier */
+.btn-danger {
+  color: var(--error) !important;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Error */
+.scraping-error-section {
+  border-color: var(--error);
+}
+
+.scraping-error-message {
+  font-size: 14px;
+  color: var(--error);
+  margin: 0 0 16px 0;
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: var(--radius-md);
+}
+
+/* Workflow info */
+.scraping-workflow-info {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.scraping-workflow-info p {
+  margin: 0 0 8px 0;
+}
+
+.scraping-workflow-info p:last-child {
+  margin-bottom: 0;
+}
+
+.scraping-workflow-info code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* Results section highlight */
+.scraping-results-section {
+  border-color: var(--success);
+}
+
+/* Progress section */
+.scraping-progress-section {
+  border-color: var(--accent-blue);
+}
+
+/* Spinner animation */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Stepper */
+.scraping-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding: 0 8px;
+}
+
+.stepper-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.stepper-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border);
+  color: var(--text-secondary);
+  transition: all 0.3s ease;
+}
+
+.stepper-step.active .stepper-icon {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  background: rgba(79, 195, 247, 0.1);
+}
+
+.stepper-step.completed .stepper-icon {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(129, 199, 132, 0.15);
+}
+
+.stepper-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: color 0.3s ease;
+}
+
+.stepper-step.active .stepper-label {
+  color: var(--accent-blue);
+}
+
+.stepper-step.completed .stepper-label {
+  color: var(--success);
+}
+
+.stepper-connector {
+  flex: 1;
+  height: 3px;
+  background: var(--bg-tertiary);
+  margin: 0 8px;
+  margin-bottom: 24px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.stepper-connector-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Delete Modal */
+.scraping-delete-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 420px;
+  max-width: 90vw;
+}
+
+.modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--error);
+  margin: 0 0 12px 0;
+}
+
+.modal-description {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 20px 0;
+  line-height: 1.5;
+}
+
+.delete-option {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.delete-option-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 8px;
+  padding-left: 28px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-danger-solid {
+  background: var(--error) !important;
+  color: white !important;
+}
+
+.btn-danger-solid:hover {
+  filter: brightness(1.1);
+}
+
+.btn-danger-solid:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
