@@ -1,400 +1,370 @@
-# Notes Techniques - Forge App
+# Notes Techniques - La Forge v1.0.1
 
-## Dernière mise à jour: 2026-01-19
+## Derniere mise a jour: 2026-01-24
 
 ---
 
-## Bugs Identifiés et Corrigés
+## Resume de l'Application
 
-### 1. Sauvegarde FTP Settings - Problème de persistance
+La Forge est une application Tauri (Rust + React) pour la gestion de projets web. Elle permet de:
+- Gerer des projets clients avec FTP/SFTP
+- Scraper des sites existants pour recuperer contenus et assets
+- Synchroniser des fichiers vers des serveurs distants
+- Generer de la documentation automatique
 
-**Symptôme**: Le mot de passe FTP s'affiche comme "manquant" après fermeture/réouverture de l'app.
+---
 
-**Causes identifiées**:
-1. Le flag `passwordAvailable` n'était pas mis à jour après sauvegarde
-2. Le `projectId` utilisé comme clé keychain contenait des `/` (chemin complet)
-3. **NOUVEAU (2026-01-18)**: Le nom du service keyring "forge-app" causait des problèmes sur macOS
-   - `set_password()` retournait Ok() mais le password n'était pas réellement stocké
-   - Erreur: "No matching entry found in secure storage" immédiatement après save
+## Architecture
 
-**Solutions appliquées**:
+### Stack Technique
 
-1. (`src/components/ProjectDetail.tsx`) - Mise à jour du flag:
-```typescript
-const hasPassword = passwordSaved || Boolean(hasSftp && sftpForm.password);
-const finalProject: Project = {
-  ...updated,
-  sftp: { ...updated.sftp, passwordAvailable: hasPassword },
-};
+| Composant | Technologie |
+|-----------|-------------|
+| Frontend | React 18 + TypeScript + Vite |
+| Backend | Rust + Tauri 1.x |
+| State Management | Zustand |
+| Drag & Drop | @dnd-kit/core |
+| Styles | CSS custom (pas de framework) |
+
+### Structure des Dossiers
+
+```
+src/
+├── components/           # Composants UI principaux
+│   ├── ui/              # Composants reutilisables (Button, Modal, etc.)
+│   ├── MiniSidebar.tsx  # Navigation compacte
+│   ├── FilterBar.tsx    # Barre de filtres expansible
+│   ├── ProjectList.tsx  # Liste des projets
+│   └── ProjectDetail.tsx # Detail d'un projet
+├── features/
+│   ├── projects/
+│   │   ├── components/  # FTPSection, ProjectFileTree
+│   │   ├── hooks/       # useFileTree, useFTPConnection, etc.
+│   │   └── utils/       # ftpCredentialsParser
+│   ├── scraping/
+│   │   └── components/  # ScrapingPanel
+│   └── settings/
+│       └── components/  # BackupSection, AutoOrganizeSection
+├── services/            # Services metier
+│   ├── configStore.ts   # Wrapper Tauri Store
+│   ├── projectService.ts
+│   ├── sftpService.ts
+│   ├── syncService.ts
+│   ├── scrapingService.ts
+│   ├── scrapingExportService.ts
+│   └── gemini/          # Integration Gemini AI
+├── stores/              # Zustand stores
+│   ├── projectStore.ts
+│   ├── settingsStore.ts
+│   ├── syncStore.ts
+│   ├── scrapingStore.ts
+│   ├── versionStore.ts
+│   ├── scheduleStore.ts
+│   └── hooksStore.ts
+├── hooks/               # Hooks React personnalises
+│   ├── useMenuEvents.ts
+│   ├── useSystemTray.ts
+│   ├── useFileWatcher.ts
+│   ├── useFilterPreferences.ts
+│   └── useProjectFiltering.ts
+└── types/               # Types TypeScript
 ```
 
-2. (`src/services/sftpService.ts`) - Clé keychain sanitisée:
-```typescript
-function sanitizeKeyForKeychain(projectId: string): string {
-  const parts = projectId.split('/').filter(Boolean);
-  const projectName = parts[parts.length - 1] || 'unknown';
-  let hash = 0;
-  for (let i = 0; i < projectId.length; i++) {
-    hash = ((hash << 5) - hash) + projectId.charCodeAt(i);
-  }
-  return `${projectName.replace(/[^a-zA-Z0-9-_]/g, '_')}_${Math.abs(hash).toString(36)}`;
-}
-// Exemple: /Users/.../Novamind -> Novamind_abc123
+### Modules Rust (src-tauri/src/)
+
+| Module | Description |
+|--------|-------------|
+| `main.rs` | Point d'entree, commandes Tauri, menu macOS |
+| `scraper.rs` | Scraping de sites web |
+| `tray.rs` | Menu du system tray |
+| `watcher.rs` | Surveillance des fichiers (_Inbox) |
+| `delta_sync.rs` | Synchronisation incrementale |
+| `version_history.rs` | Snapshots et restauration |
+| `scheduler.rs` | Planification des syncs |
+| `parallel_sync.rs` | Transfert multi-connexions |
+| `transfer_resume.rs` | Reprise des transferts |
+| `full_site_scraper.rs` | Scraping complet de sites |
+| `scrape_cache.rs` | Cache de scraping |
+
+---
+
+## Fonctionnalites Implementees
+
+### 1. Interface Utilisateur
+
+#### MiniSidebar
+Navigation compacte avec:
+- Logo La Forge
+- Bouton Projets
+- Bouton Scraping (page dediee)
+- Bouton Settings
+
+#### FilterBar
+Barre de filtres expansible:
+- Multi-selection des statuts (Prospect, En dev, Recette, Valide, Live, Archive)
+- Tri par nom ou date
+- Mode vue grille/liste
+- Persistance des preferences
+
+#### Menu macOS
+Menu natif en francais avec raccourcis:
+- Forge: A propos, Preferences (⌘,)
+- Fichier: Nouveau projet (⌘N)
+- Edition: Couper, Copier, Coller
+- Affichage: Actualiser (⌘R), Plein ecran
+- Projet: Ouvrir Finder (⌘⇧O), Synchroniser (⌘⇧S)
+
+#### System Tray
+Icone dans la barre de menu macOS:
+- 7 projets recents
+- Ouvrir dans Finder
+- Synchroniser FTP
+- Indicateur de sync en cours
+
+### 2. Gestion des Projets
+
+#### Structure de dossiers
+```
+MonProjet/
+├── _Inbox/           # Fichiers entrants (surveille)
+├── Assets/           # Fichiers fournis par le client
+├── Documentation/    # Brief, specs
+├── References/       # Contenus scrapes
+└── www/              # Fichiers de production
+    ├── css/
+    └── js/
 ```
 
-3. **NOUVEAU** (`src-tauri/src/main.rs`) - Nom de service keyring corrigé:
-```rust
-// Avant: "forge-app" (problématique)
-// Après: "com.forge.app" (format bundle ID standard macOS)
-const KEYRING_SERVICE: &str = "com.forge.app";
+#### FTP/SFTP
+- Protocoles: SFTP, FTP, FTPS
+- Import automatique des credentials (Smart Paste)
+- Test de connexion
+- Selection des dossiers distants
+- Sauvegarde mot de passe (Keychain)
 
-// + Vérification immédiate après save
-fn save_password(key: String, password: String) -> Result<(), String> {
-    // ... save ...
-    // Vérifier que le password est vraiment là
-    let verify_entry = keyring::Entry::new(KEYRING_SERVICE, &key)?;
-    match verify_entry.get_password() {
-        Ok(retrieved) if retrieved == password => Ok(()),
-        _ => Err("Password was not saved correctly".to_string())
-    }
-}
-```
+### 3. Scraping
 
-4. (`src/services/sftpService.ts`) - Logs d'erreur supprimés pour les cas attendus:
-   - Ne pas trouver un password est normal pour les projets sans credentials sauvegardés
-   - Plus de spam d'erreurs dans la console au chargement de la page d'accueil
+#### Fonctionnalites
+- Stepper visuel (Scraping → Organisation → Amelioration → Documentation)
+- Historique des 10 derniers runs
+- Statistiques: pages, images, textes, couleurs, polices
+- Export JSON, CSV, CSS (variables couleurs)
 
-**Status**: ABANDONNE - Le keyring crate v3 ne fonctionne pas sur macOS
+#### Integration Gemini AI
+- Amelioration des textes scrapes
+- Categorisation des fichiers (_Inbox)
+- Profil client automatique
 
-### 1b. Sauvegarde FTP Settings - NOUVELLE SOLUTION (2026-01-18)
+#### Cache
+- Hash SHA-256 des URLs et contenus
+- TTL configurable (defaut: 7 jours)
+- Stockage: `_Inbox/.scrape_cache.json`
 
-**Problème**: Le keyring crate v3 ne sauvegarde pas réellement les mots de passe sur macOS.
+### 4. Synchronisation FTP
 
-**Nouvelle solution**: Utiliser le Tauri Store (même technologie que pour les configs projet)
+#### Fonctionnalites
+- Progression en temps reel
+- Liste des fichiers en cours
+- Protection timeout (15s connect, 5min sync)
+- Annulation possible
+- Delta sync (synchronisation incrementale)
+- Parallel sync (multi-connexions)
+- Reprise des transferts interrompus
 
-**Fichiers modifiés**:
-- `src/services/configStore.ts` - Ajout des méthodes `saveCredential`, `getCredential`, `hasCredential`, `deleteCredential`
-- `src/services/sftpService.ts` - Utilise `configStore` au lieu du keychain Rust
+#### Version History
+- Snapshots avant synchronisation
+- Comparaison entre versions
+- Restauration possible
 
-**Stockage**: `~/Library/Application Support/com.forge.app/credentials.dat`
+#### Scheduler
+- Planification cron des syncs
+- Frequences: quotidien, hebdomadaire, mensuel
+- Activation/desactivation par projet
 
-**Sécurité**: Les mots de passe sont obfusqués (XOR + Base64), pas cryptographiquement sécurisé mais:
-- Mieux que du texte en clair
-- Le dossier Application Support est protégé par les permissions utilisateur
-- Suffisant pour une app de développement local
+### 5. FileWatcher (_Inbox)
 
-**Status**: IMPLÉMENTÉ - À TESTER
-
----
-
-### 2. TreeView DnD (Paramètres > Structure dossiers)
-
-**Symptôme**: Le drag & drop dans la structure des dossiers (Settings) ne fonctionnait pas.
-
-**Cause identifiée**:
-- Implémentation custom HTML5 DnD avec problèmes de refs désynchronisées
-- Stale closures dans les callbacks useCallback
-- État du drag perdu entre dragOver et drop
-
-**Solution appliquée**:
-- Réécriture complète avec `@dnd-kit/core`
-- Fichiers modifiés:
-  - `src/components/ui/TreeView.tsx` - Réécriture avec dnd-kit
-  - `src/components/ui/TreeViewUtils.ts` - Utilitaires extraits
-
-**Status**: IMPLÉMENTÉ - À TESTER
+#### Fonctionnalites
+- Surveillance automatique des nouveaux fichiers
+- Categorisation avec Gemini AI
+- Tri automatique si confiance >= seuil
+- Configuration globale dans Settings
 
 ---
 
-### 3. ProjectFileTree DnD (Explorateur fichiers projet)
+## Refactoring Effectue
 
-**Symptôme**: Le drag & drop dans l'explorateur de fichiers du projet ne fonctionnait pas.
+### FTPSection.tsx (2026-01-24)
 
-**Cause identifiée**:
-- HTML5 drag & drop API peu fiable avec React
-- Zones de drop trop petites
-- Événement `drop` ne se déclenchait jamais malgré `dragEnter` fonctionnel
+Split de 525 lignes en composants modulaires:
 
-**Solution appliquée**:
-- Réécriture complète avec `@dnd-kit/core` (comme TreeView)
-- Pattern IDs séparés: draggable=`path`, droppable=`drop:${path}`
-- Augmentation taille des éléments (padding: 10px 12px, min-height: 36px)
+| Fichier | Lignes | Description |
+|---------|--------|-------------|
+| `FTPSection.tsx` | 93 | Composant principal |
+| `FTPConnectionCard.tsx` | 180 | Connexion et test |
+| `FTPSyncCard.tsx` | 130 | Parametres sync |
+| `FTPSmartPaste.tsx` | 90 | Import automatique |
+| `ftpCredentialsParser.ts` | 120 | Parsing regex |
 
-**Fichier modifié**: `src/features/projects/components/ProjectFileTree.tsx`
+### ProjectFileTree.tsx (2026-01-24)
 
-**Logs ajoutés**:
-- `[ProjectFileTree] dragStart: <path>`
-- `[ProjectFileTree] Moving: <source> -> <target>`
-- `[ProjectFileTree] Move successful`
+Split de 770 lignes avec extraction des hooks:
 
-**Status**: IMPLÉMENTÉ - À TESTER
-
----
-
-### 4. Bouton "Ouvrir URL de test"
-
-**Symptôme**: Le bouton ne fait rien quand on clique dessus.
-
-**Investigation**:
-- Handler `onClick` correctement attaché (vérifié dans `ProjectDetail.tsx` lignes 329, 445)
-- Appelle `projectService.openInBrowser(testUrl)`
-- `openInBrowser` utilise `@tauri-apps/api/shell` > `open(url)`
-- Permission `shell.open: true` activée dans `tauri.conf.json`
-
-**Logs ajoutés** (`src/services/projectService.ts`):
-```typescript
-async openInBrowser(url: string): Promise<void> {
-  console.log('[projectService] Opening URL in browser:', url);
-  if (!url) {
-    console.error('[projectService] openInBrowser: URL is empty');
-    return;
-  }
-  try {
-    await open(url);
-    console.log('[projectService] URL opened successfully');
-  } catch (err) {
-    console.error('[projectService] Failed to open URL:', err);
-  }
-}
-```
-
-**Pour diagnostiquer**: Cliquer sur le bouton et vérifier la console pour les messages.
-
-**Status**: DIAGNOSTICS EN PLACE - EN ATTENTE DE TEST
+| Fichier | Lignes | Description |
+|---------|--------|-------------|
+| `ProjectFileTree.tsx` | 427 | Composant principal |
+| `useFileTree.ts` | 120 | Chargement arborescence |
+| `useFileTreeDragAndDrop.ts` | 135 | Logique DnD |
+| `useFileTreeModals.ts` | 160 | Modals CRUD |
+| `useFileTreeContextMenu.ts` | 95 | Menu contextuel |
 
 ---
 
-## Changements d'Architecture Effectués
+## Corrections de Bugs
 
-### Migration vers Tauri Plugin Store
+### Sauvegarde FTP (2026-01-18)
 
-**Problème original**:
-- `writeTextFile` pour `.project-config.json` dans le dossier projet
-- Problèmes de permissions sur Dropbox/disques externes
+**Probleme**: Mot de passe FTP non sauvegarde correctement.
+
+**Cause**: Le keyring crate v3 ne fonctionnait pas sur macOS.
+
+**Solution**: Utilisation du Tauri Store avec chiffrement AES-256.
+- Migration automatique des anciens credentials (XOR → AES-256)
+- Stockage: `~/Library/Application Support/com.forge.app/credentials.dat`
+
+### Blocage UI Sync FTP (2026-01-20)
+
+**Probleme**: L'app ne repond plus apres timeout FTP.
 
 **Solution**:
-- Utilisation de `@tauri-apps/plugin-store` (v1 branch pour Tauri 1.x)
-- Stockage dans `~/Library/Application Support/com.forge.app/`
-- Écriture atomique
+- Timeout global frontend avec `Promise.race`
+- Protection contre les syncs multiples
+- Cooldown de 5s apres echec
+- Bouton desactive pendant le cooldown
 
-**Fichiers créés/modifiés**:
-- `src-tauri/Cargo.toml` - Ajout dépendance tauri-plugin-store
-- `src-tauri/src/main.rs` - Enregistrement plugin
-- `src/services/configStore.ts` - NOUVEAU service wrapper
-- `src/services/projectService.ts` - Utilise configStore avec migration
+### Blocage UI Scraping (2026-01-20)
 
-### Migration DnD vers dnd-kit
+**Probleme**: L'app ne repond plus pendant le scraping.
 
-**Dépendances ajoutées**:
+**Solution**:
+- Timeout global de 5 minutes
+- Protection contre les scrapings multiples
+- Variable `currentScrapingProjectId`
+
+### Tray Sync Navigation (2026-01-24)
+
+**Probleme**: La sync depuis le tray n'ouvre pas le projet.
+
+**Solution**: Ajout de `selectProject(projectId)` et `setCurrentView('projects')` avant `handleSync()`.
+
+---
+
+## Configuration
+
+### tauri.conf.json
+
 ```json
-"@dnd-kit/core": "^6.x",
-"@dnd-kit/sortable": "^8.x",
-"@dnd-kit/utilities": "^3.x"
+{
+  "package": {
+    "productName": "La Forge",
+    "version": "1.0.1"
+  },
+  "tauri": {
+    "bundle": {
+      "identifier": "com.forge.app",
+      "targets": ["app", "dmg"]
+    },
+    "updater": {
+      "active": true,
+      "endpoints": ["https://github.com/flagorn-sudo/Laforge/releases/latest/download/latest.json"]
+    },
+    "systemTray": {
+      "iconPath": "icons/tray-icon.png"
+    }
+  }
+}
 ```
 
-**Pattern utilisé**:
-- IDs séparés pour draggable et droppable (évite conflits)
-- `useDraggable` avec `node.id`
-- `useDroppable` avec `drop:${node.id}`
-- Fonction `fromDroppableId()` pour extraire l'ID réel
+### Mises a jour automatiques
 
----
-
-## Nouvelles Fonctionnalités (2026-01-18)
-
-### Scraping amélioré
-
-- **Store global pour le scraping** (`src/stores/scrapingStore.ts`)
-  - Le scraping persiste quand on change d'onglet
-  - État géré globalement par projet
-
-- **Option Gemini cochée par défaut** si clé API configurée
-
-- **Affichage de toutes les couleurs** (plus de limite à 10-12)
-
-- **Bouton "Fusionner similaires"** pour les couleurs
-  - Fusionne les couleurs dont la distance RGB < 30
-  - Fonction `mergeSimilarColors()` dans ProjectDetail.tsx
-
-- **Meilleure UX pendant le scraping**
-  - Message "Veuillez patienter..." avec spinner
-  - Bouton "Annuler" pour interrompre
-  - Barre de progression avec messages contextuels
-
-### Création de projet simplifiée
-
-- Formulaire réduit à 2 champs : nom + URL (optionnel)
-- Génération automatique du profil client si URL fournie
-- Structure de dossiers `www/css` et `www/js` ajoutée
-
-### Corrections d'erreurs
-
-- `text.elementType.startsWith` undefined → ajout fallback
-- `img.localPath.split` undefined → ajout vérification optionnelle
-
----
-
-## À Faire
-
-### Terminé
-1. [x] Finaliser ProjectFileTree avec dnd-kit
-2. [x] Investiguer bouton URL de test (logs ajoutés)
-3. [x] Scraping en tâche de fond (store global)
-4. [x] Option Gemini cochée par défaut
-5. [x] Afficher toutes les couleurs
-6. [x] Bouton fusion couleurs similaires
-
-### En cours / À tester
-1. [ ] Tester sauvegarde FTP après corrections
-2. [ ] Tester TreeView DnD (Settings)
-3. [ ] Tester ProjectFileTree DnD (Explorateur fichiers)
-
-### Prochaine session - FileWatcher (_Inbox)
-
-**Objectif**: Trier automatiquement les fichiers déposés dans `_Inbox` vers les bons dossiers.
-
-**Approche choisie**: Hybride (global + override par projet)
-- Toggle global dans Settings (`autoOrganize.enabled`)
-- Override par projet pour exclure certains projets
-- Tri automatique si confiance Gemini ≥ 80%, sinon confirmation
-
-**Backend**: Déjà implémenté
-- `src-tauri/src/watcher.rs` - Rust watcher avec notify
-- `src/services/fileWatcherService.ts` - Service TypeScript
-
-**Fichiers à créer**:
-- `src/stores/fileWatcherStore.ts` - Store Zustand pour l'état global
-- `src/hooks/useFileWatcher.ts` - Hook d'initialisation
-- `src/components/FileCategorizationModal.tsx` - Modal de confirmation
-
-**Fichiers à modifier**:
-- `src/types/index.ts` - Ajouter `fileWatcher?: { excluded: boolean }`
-- `src/components/ProjectDetail.tsx` - Toggle par projet
-- `src/components/Sidebar.tsx` - Indicateur visuel (Eye icon)
-- `src/App.tsx` - Intégration du hook
-
-**Estimation**: ~10-12h
-
-### Prochaine session - Cache Scraping (Rust)
-
-**Objectif**: Éviter de re-scraper les mêmes pages déjà traitées.
-
-**Approche**:
-- Stocker les URLs/hashes des pages scrapées dans un fichier cache
-- Vérifier le cache avant chaque scrape
-- Ajouter option "Force refresh" pour ignorer le cache
-
-**Fichiers à modifier**:
-- `src-tauri/src/scraper.rs` - Ajouter logique de cache
-- Créer fichier cache dans `_Inbox/.scrape-cache.json`
+Pour activer les mises a jour:
+1. Generer une paire de cles: `npx @tauri-apps/cli signer generate -w ~/.tauri/la-forge.key`
+2. Mettre la cle publique dans `tauri.conf.json > updater > pubkey`
+3. Compiler avec signature: `TAURI_PRIVATE_KEY=$(cat ~/.tauri/la-forge.key) npm run tauri build`
+4. Creer `latest.json` sur GitHub avec les URLs des bundles
 
 ---
 
 ## Commandes Utiles
 
 ```bash
-# Lancer l'app en dev
+# Developpement
 npm run tauri dev
 
-# Rebuild Rust uniquement
-cd src-tauri && cargo build
+# Build production
+npm run tauri build
 
-# Voir les logs
-# Les logs apparaissent dans la console du terminal (pas DevTools)
+# Build frontend uniquement
+npm run build
+
+# Rebuild Rust
+cd src-tauri && cargo build --release
+
+# Verifier les types
+npm run typecheck
 ```
 
 ---
 
-## Structure des Fichiers Clés
+## Dependances Principales
 
-```
-src/
-├── components/
-│   ├── ui/
-│   │   ├── TreeView.tsx      # DnD avec dnd-kit (Settings)
-│   │   └── TreeViewUtils.ts  # Utilitaires arbre
-│   ├── Sidebar.tsx           # Navigation + recherche/tri
-│   ├── ProjectList.tsx       # Liste projets + filtres
-│   └── ProjectDetail.tsx     # Détail projet + FTP form
-├── features/
-│   └── projects/
-│       └── components/
-│           └── ProjectFileTree.tsx  # Explorateur fichiers (dnd-kit)
-├── services/
-│   ├── configStore.ts        # Wrapper Tauri Store
-│   ├── projectService.ts     # Gestion projets
-│   └── sftpService.ts        # FTP/SFTP
-├── hooks/
-│   ├── useProjectFiltering.ts # Filtrage/tri projets (centralisé)
-│   └── ...
-└── stores/
-    └── projectStore.ts       # Zustand store
-```
+### Frontend
+- react, react-dom
+- zustand (state management)
+- @dnd-kit/core (drag & drop)
+- lucide-react (icones)
+- @tauri-apps/api (bridge Tauri)
+- @tauri-apps/plugin-store
+
+### Backend (Rust)
+- tauri
+- ssh2 (SFTP)
+- suppaftp (FTP/FTPS)
+- reqwest (HTTP)
+- scraper (HTML parsing)
+- keyring (credentials)
+- notify (file watching)
+- cron (scheduler)
+- sha2 (hashing)
 
 ---
 
-## Refactoring Effectué (2026-01-19)
+## Performances
 
-### Extraction du hook useProjectFiltering
+### Taille du bundle
+- Frontend: ~518 KB (gzipped: ~160 KB)
+- App macOS: ~15 MB
+- DMG: ~10 MB
 
-**Problème**: Logique de filtrage/tri dupliquée dans `Sidebar.tsx` et `ProjectList.tsx`.
-
-**Solution**: Création d'un hook centralisé `useProjectFiltering`.
-
-**Fichiers créés**:
-- `src/hooks/useProjectFiltering.ts` - Hook avec state et logique mémoïsée
-
-**Fichiers modifiés**:
-- `src/hooks/index.ts` - Export du nouveau hook
-- `src/components/Sidebar.tsx` - Utilise le hook
-- `src/components/ProjectList.tsx` - Utilise le hook
-
-**API du hook**:
-```typescript
-const {
-  searchQuery,      // Terme de recherche
-  setSearchQuery,   // Setter
-  sortBy,           // 'name' | 'date'
-  setSortBy,        // Setter
-  filteredProjects, // Projets filtrés et triés
-  clearSearch,      // Vide la recherche
-  hasActiveFilter,  // true si recherche active
-} = useProjectFiltering(projects, { initialSortBy: 'name' });
-```
-
-**Avantages**:
-- Code DRY (Don't Repeat Yourself)
-- Logique testable isolément
-- Comportement cohérent entre les deux vues
-- Facile à étendre (ex: filtrer par statut)
+### Optimisations appliquees
+- Lazy loading des services Gemini
+- Memoisation des listes filtrees
+- Debounce sur les sauvegardes
+- Cache de scraping avec TTL
 
 ---
 
-## Nouvelles Fonctionnalités (2026-01-19)
+## Historique des Versions
 
-### Recherche et tri dans Sidebar et ProjectList
+### v1.0.1 (2026-01-24)
+- Refactoring FTPSection et ProjectFileTree
+- Correction navigation tray sync
+- Export scraping JSON/CSV/CSS
+- Historique scraping (10 runs)
+- Cache scraping avec TTL
 
-- Barre de recherche avec icône
-- Boutons de tri (nom A-Z, date récente)
-- Compteur de projets filtrés
-- État "Aucun résultat" si recherche vide
-- Liste scrollable dans la Sidebar
-
-**CSS ajouté** (`globals.css`):
-- `.filter-bar`, `.search-input`, `.sort-buttons` (ProjectList)
-- `.sidebar-filter-bar`, `.sidebar-search`, `.sidebar-sort-buttons` (Sidebar)
-- `.sidebar-projects-list` (scroll)
-- `.sidebar-no-results` (état vide)
-
----
-
-## À Planifier
-
-### Revoir système d'affichage des projets
-
-La sidebar actuelle duplique la liste de projets de la vue centrale. Options à évaluer:
-1. Supprimer la sidebar
-2. Sidebar minimale (logo + actions)
-3. Sidebar contextuelle (infos projet sélectionné)
-
-Voir `TODO.md` pour plus de détails.
+### v1.0.0 (2026-01-20)
+- Version initiale
+- Gestion projets
+- FTP/SFTP
+- Scraping avec Gemini
+- Menu macOS en francais
