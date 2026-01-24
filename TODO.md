@@ -178,7 +178,11 @@
   - 4 étapes : Scraping → Organisation → Documentation → Amélioration
   - Barre de progression avec gradient
   - Descriptions contextuelles pour chaque étape
-- [ ] Historique des scraping (plusieurs runs)
+- [x] Historique des scraping (plusieurs runs)
+  - Type `ScrapingRun` avec id, date, URL, stats, erreurs
+  - Historique limité aux 10 derniers runs
+  - Section dépliable dans ScrapingPanel
+  - Détails de chaque run avec couleurs et erreurs
 - [ ] Export des résultats de scraping en JSON/CSV
 
 ### Indicateur de progression pour la synchronisation FTP (TERMINÉ)

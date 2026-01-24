@@ -17,11 +17,14 @@ import {
   Type,
   X,
   Trash2,
+  History,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Button, Card, Switch } from '../../../components/ui';
 import { ScrapeResult } from '../../../services/documentationService';
 import { useScrapingStore } from '../../../stores';
-import { Project } from '../../../types';
+import { Project, ScrapingRun } from '../../../types';
 import { FullSiteScraper } from '../../../components/FullSiteScraper';
 import { projectService } from '../../../services/projectService';
 import { scrapingService } from '../../../services/scrapingService';
@@ -97,6 +100,12 @@ export function ScrapingPanel({
   // Previous scraping info
   const previousScraping = project.scraping;
   const hasPreviousScraping = previousScraping?.completed && previousScraping?.stats;
+  const scrapingHistory = previousScraping?.history || [];
+  const hasHistory = scrapingHistory.length > 1;
+
+  // History display state
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedHistoryRun, setSelectedHistoryRun] = useState<ScrapingRun | null>(null);
 
   // Store for organizing phase
   const { getScrapingState, processScrapedResult, resetScraping } = useScrapingStore();
@@ -418,6 +427,76 @@ export function ScrapingPanel({
                   <span key={i} className="scraping-font-tag">{font}</span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* History section */}
+          {hasHistory && (
+            <div className="scraping-history">
+              <button
+                className="scraping-history-toggle"
+                onClick={() => setShowHistory(!showHistory)}
+              >
+                <History size={14} />
+                <span>Historique ({scrapingHistory.length} scrapings)</span>
+                {showHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+
+              {showHistory && (
+                <div className="scraping-history-list">
+                  {scrapingHistory.map((run, index) => (
+                    <div
+                      key={run.id}
+                      className={`scraping-history-item ${selectedHistoryRun?.id === run.id ? 'selected' : ''} ${index === 0 ? 'latest' : ''}`}
+                      onClick={() => setSelectedHistoryRun(selectedHistoryRun?.id === run.id ? null : run)}
+                    >
+                      <div className="history-item-header">
+                        <span className="history-item-date">
+                          {index === 0 && <span className="history-badge">Dernier</span>}
+                          {formatScrapingDate(run.scrapedAt)}
+                        </span>
+                        <span className="history-item-url" title={run.sourceUrl}>
+                          {run.sourceUrl.replace(/^https?:\/\//, '').split('/')[0]}
+                        </span>
+                      </div>
+                      <div className="history-item-stats">
+                        <span>{run.stats.pagesCount} pages</span>
+                        <span>{run.stats.imagesCount} images</span>
+                        <span>{run.stats.colorsCount} couleurs</span>
+                      </div>
+
+                      {selectedHistoryRun?.id === run.id && (
+                        <div className="history-item-details">
+                          <div className="history-detail-row">
+                            <Globe size={12} />
+                            <a href={run.sourceUrl} target="_blank" rel="noopener noreferrer">
+                              {run.sourceUrl}
+                            </a>
+                          </div>
+                          {run.stats.colors.length > 0 && (
+                            <div className="history-colors">
+                              {run.stats.colors.slice(0, 10).map((color, i) => (
+                                <div
+                                  key={i}
+                                  className="history-color-swatch"
+                                  style={{ background: color }}
+                                  title={color}
+                                />
+                              ))}
+                            </div>
+                          )}
+                          {run.errors && run.errors.length > 0 && (
+                            <div className="history-errors">
+                              <AlertTriangle size={12} />
+                              <span>{run.errors.length} erreur(s)</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

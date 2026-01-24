@@ -7,7 +7,7 @@ import {
 import { fileSystemService } from '../services/fileSystemService';
 import { geminiService } from '../services/geminiService';
 import { projectService } from '../services/projectService';
-import { Project, ScrapingStats } from '../types';
+import { Project, ScrapingStats, ScrapingRun } from '../types';
 
 type ScrapingStage =
   | 'idle'
@@ -255,6 +255,19 @@ export const useScrapingStore = create<ScrapingStore>((set, get) => ({
         fonts: scrapeResult.fonts,
       };
 
+      // Créer un nouveau run pour l'historique
+      const newRun: ScrapingRun = {
+        id: crypto.randomUUID(),
+        sourceUrl: url,
+        scrapedAt: new Date().toISOString(),
+        stats: scrapingStats,
+        errors: scrapeResult.errors.length > 0 ? scrapeResult.errors.slice(0, 10) : undefined,
+      };
+
+      // Garder les 10 derniers runs maximum
+      const existingHistory = project.scraping?.history || [];
+      const updatedHistory = [newRun, ...existingHistory].slice(0, 10);
+
       const updatedProject: Project = {
         ...project,
         scraping: {
@@ -262,6 +275,7 @@ export const useScrapingStore = create<ScrapingStore>((set, get) => ({
           sourceUrl: url,
           scrapedAt: new Date().toISOString(),
           stats: scrapingStats,
+          history: updatedHistory,
         },
         // Mettre à jour les couleurs et polices du projet si pas déjà définies
         colors: project.colors?.length ? project.colors : scrapeResult.colors,
@@ -427,6 +441,18 @@ export const useScrapingStore = create<ScrapingStore>((set, get) => ({
         fonts: scrapeResult.fonts,
       };
 
+      // Créer un nouveau run pour l'historique
+      const newRun: ScrapingRun = {
+        id: crypto.randomUUID(),
+        sourceUrl: url,
+        scrapedAt: new Date().toISOString(),
+        stats: scrapingStats,
+      };
+
+      // Garder les 10 derniers runs maximum
+      const existingHistory = project.scraping?.history || [];
+      const updatedHistory = [newRun, ...existingHistory].slice(0, 10);
+
       const updatedProject: Project = {
         ...project,
         scraping: {
@@ -434,6 +460,7 @@ export const useScrapingStore = create<ScrapingStore>((set, get) => ({
           sourceUrl: url,
           scrapedAt: new Date().toISOString(),
           stats: scrapingStats,
+          history: updatedHistory,
         },
         colors: project.colors?.length ? project.colors : scrapeResult.colors,
         fonts: project.fonts?.length ? project.fonts : scrapeResult.fonts,

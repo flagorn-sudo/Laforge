@@ -62,11 +62,22 @@ export interface ScrapingStats {
   fonts: string[];         // Polices détectées
 }
 
+/** Un run de scraping individuel */
+export interface ScrapingRun {
+  id: string;              // UUID unique
+  sourceUrl: string;
+  scrapedAt: string;       // ISO date
+  stats: ScrapingStats;
+  errors?: string[];       // Erreurs rencontrées
+  duration?: number;       // Durée en secondes
+}
+
 export interface ScrapingInfo {
   completed: boolean;
   sourceUrl?: string;
   scrapedAt?: string;
-  stats?: ScrapingStats;   // Statistiques détaillées du scraping
+  stats?: ScrapingStats;   // Statistiques du dernier scraping (rétrocompatibilité)
+  history?: ScrapingRun[]; // Historique des scrapings (max 10)
 }
 
 export interface SFTPConfig {
