@@ -22,6 +22,9 @@ import {
   BookOpen,
   History,
   Calendar,
+  Link2,
+  Webhook,
+  Filter,
 } from 'lucide-react';
 import { Project, PROJECT_STATUS_CONFIG, FTPProtocol, ReferenceWebsite, ProjectStatus } from '../types';
 import { ReorganizeProjectModal } from './ReorganizeProjectModal';
@@ -37,6 +40,12 @@ import { ScrapingPage } from './ScrapingPage';
 import { FTPLogWindow } from './FTPLogWindow';
 import { VersionHistory } from './VersionHistory';
 import { SyncScheduler } from './SyncScheduler';
+import { ProjectDashboard } from './ProjectDashboard';
+import { PreviewLinkGenerator } from './PreviewLinkGenerator';
+import { PostSyncHooks } from './PostSyncHooks';
+import { TimeTrackerMini, TimeTracker, TimeSessionsPanel } from './TimeTracker';
+import { SyncRulesPanel } from './SyncRulesPanel';
+import { SyncRules } from '../types';
 import { useFTPConnection } from '../features/projects/hooks/useFTPConnection';
 import { useSyncEvents } from '../hooks';
 import { useUIStore, useSyncStore, useProjectStore } from '../stores';
@@ -148,6 +157,10 @@ export function ProjectDetail({
   const [showLogWindow, setShowLogWindow] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
+  const [showPreviewLinks, setShowPreviewLinks] = useState(false);
+  const [showPostSyncHooks, setShowPostSyncHooks] = useState(false);
+  const [showTimeSessions, setShowTimeSessions] = useState(false);
+  const [showSyncRules, setShowSyncRules] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -682,6 +695,7 @@ export function ProjectDetail({
     { id: 'ftp', label: 'FTP & Sync' },
     { id: 'files', label: 'Fichiers' },
     { id: 'scraping', label: 'Scraping' },
+    { id: 'dashboard', label: 'Dashboard' },
   ];
 
   return (
@@ -694,6 +708,7 @@ export function ProjectDetail({
           <h1>{project.client || project.name}</h1>
           {project.client && <span className="subtitle">{project.name}</span>}
         </div>
+        <TimeTrackerMini projectId={project.id} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {currentSiteUrl && (
             <Button
@@ -919,6 +934,12 @@ export function ProjectDetail({
             </div>
 
             <div className="detail-sidebar">
+              {/* Time Tracker */}
+              <TimeTracker
+                projectId={project.id}
+                projectName={project.client || project.name}
+              />
+
               <Card title="Actions rapides">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <Button
@@ -1358,6 +1379,36 @@ export function ProjectDetail({
                     <span className="tool-desc">Sync automatique</span>
                   </div>
                 </button>
+                <button
+                  className="advanced-tool-btn"
+                  onClick={() => setShowPreviewLinks(true)}
+                >
+                  <Link2 size={18} />
+                  <div className="tool-info">
+                    <span className="tool-name">Liens de preview</span>
+                    <span className="tool-desc">Partager avec le client</span>
+                  </div>
+                </button>
+                <button
+                  className="advanced-tool-btn"
+                  onClick={() => setShowPostSyncHooks(true)}
+                >
+                  <Webhook size={18} />
+                  <div className="tool-info">
+                    <span className="tool-name">Actions post-sync</span>
+                    <span className="tool-desc">Webhooks et scripts</span>
+                  </div>
+                </button>
+                <button
+                  className="advanced-tool-btn"
+                  onClick={() => setShowSyncRules(true)}
+                >
+                  <Filter size={18} />
+                  <div className="tool-info">
+                    <span className="tool-name">Regles de sync</span>
+                    <span className="tool-desc">Exclusions et filtres</span>
+                  </div>
+                </button>
               </div>
             </Card>
 
@@ -1386,6 +1437,62 @@ export function ProjectDetail({
                   projectId={project.id}
                   projectName={project.client || project.name}
                   onClose={() => setShowScheduler(false)}
+                />
+              </Modal>
+            )}
+
+            {/* Preview Links Modal */}
+            {showPreviewLinks && (
+              <Modal
+                title="Liens de prévisualisation"
+                onClose={() => setShowPreviewLinks(false)}
+                className="modal-large"
+              >
+                <PreviewLinkGenerator
+                  projectId={project.id}
+                  projectName={project.client || project.name}
+                  testUrl={testUrl}
+                  onClose={() => setShowPreviewLinks(false)}
+                />
+              </Modal>
+            )}
+
+            {/* Post-Sync Hooks Modal */}
+            {showPostSyncHooks && (
+              <Modal
+                title="Actions post-synchronisation"
+                onClose={() => setShowPostSyncHooks(false)}
+                className="modal-large"
+              >
+                <PostSyncHooks
+                  projectId={project.id}
+                  projectName={project.client || project.name}
+                  onClose={() => setShowPostSyncHooks(false)}
+                />
+              </Modal>
+            )}
+
+            {/* Sync Rules Modal */}
+            {showSyncRules && (
+              <Modal
+                title="Regles de synchronisation"
+                onClose={() => setShowSyncRules(false)}
+              >
+                <SyncRulesPanel
+                  syncRules={project.syncRules}
+                  localPath={localPath}
+                  onChange={async (rules: SyncRules) => {
+                    const updated = {
+                      ...project,
+                      syncRules: rules,
+                      updated: new Date().toISOString(),
+                    };
+                    await projectService.saveProject(updated);
+                    onUpdate(updated);
+                    setShowSyncRules(false);
+                    addNotification('success', 'Regles de synchronisation enregistrees');
+                  }}
+                  onClose={() => setShowSyncRules(false)}
                 />
               </Modal>
             )}
@@ -1429,6 +1536,13 @@ export function ProjectDetail({
             }}
           />
         )}
+
+        {/* Tab: Dashboard */}
+        {activeTab === 'dashboard' && (
+          <ProjectDashboard
+            project={project}
+          />
+        )}
       </Tabs>
 
       {showDeleteModal && (
@@ -1469,6 +1583,18 @@ export function ProjectDetail({
             onUpdate(project);
           }}
         />
+      )}
+
+      {showTimeSessions && (
+        <Modal
+          title="Historique du temps"
+          onClose={() => setShowTimeSessions(false)}
+        >
+          <TimeSessionsPanel
+            projectId={project.id}
+            onClose={() => setShowTimeSessions(false)}
+          />
+        </Modal>
       )}
     </div>
   );

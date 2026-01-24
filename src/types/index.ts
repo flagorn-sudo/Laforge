@@ -17,6 +17,14 @@ export interface Project {
   clientDescription?: string;             // Description de l'activité client (généré par IA)
   themeTags?: string[];                   // Tags de thème/orientations design
   themeTagsGeneratedAt?: string;          // Date de génération des tags
+  syncRules?: SyncRules;                  // Regles de synchronisation selective
+}
+
+// Sync Rules for selective synchronization
+export interface SyncRules {
+  enabled: boolean;
+  excludePatterns: string[];              // Patterns gitignore-style a exclure
+  includeFolders?: string[];              // Dossiers specifiques a inclure (si vide = tous)
 }
 
 export type ProjectStatus = 'prospect' | 'development' | 'review' | 'validated' | 'live' | 'archived';

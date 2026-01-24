@@ -1,4 +1,4 @@
-# Notes Techniques - La Forge v1.0.1
+# Notes Techniques - La Forge v1.1.0
 
 ## Derniere mise a jour: 2026-01-24
 
@@ -60,7 +60,8 @@ src/
 │   ├── scrapingStore.ts
 │   ├── versionStore.ts
 │   ├── scheduleStore.ts
-│   └── hooksStore.ts
+│   ├── hooksStore.ts
+│   └── timeStore.ts     # Time tracking
 ├── hooks/               # Hooks React personnalises
 │   ├── useMenuEvents.ts
 │   ├── useSystemTray.ts
@@ -188,6 +189,90 @@ MonProjet/
 - Categorisation avec Gemini AI
 - Tri automatique si confiance >= seuil
 - Configuration globale dans Settings
+
+### 6. Time Tracking (v1.1.0)
+
+#### Composants
+- `TimeTracker.tsx`: Widget complet avec timer, stats, controles
+- `TimeTrackerMini`: Version compacte pour le header
+- `TimeSessionsPanel`: Historique des sessions
+- `timeStore.ts`: Store Zustand avec persistance
+
+#### Fonctionnalites
+- Timer start/stop par projet
+- Affichage en temps reel dans le header
+- Stats: aujourd'hui, cette semaine, total projet
+- Tarif horaire configurable (defaut: 75€/h)
+- Calcul automatique du montant facturable
+- Historique complet des sessions
+- Persistance locale (localStorage via Zustand)
+
+#### Interface
+```
+┌─────────────────────────────────────────┐
+│  TEMPS DE TRAVAIL                       │
+├─────────────────────────────────────────┤
+│  00:34:12  [Demarrer] / [Stop]          │
+│                                         │
+│  Aujourd'hui    Cette semaine    Total  │
+│     1h 20m         8h 45m       45h 20m │
+│                                         │
+│  Tarif: 75€/h  →  Facturable: 3 400€   │
+└─────────────────────────────────────────┘
+```
+
+### 7. Sync Selective (v1.1.0)
+
+#### Composants
+- `SyncRulesPanel.tsx`: Configuration des regles
+- `SyncRules` type dans `types/index.ts`
+
+#### Fonctionnalites
+- Patterns d'exclusion style .gitignore
+- Patterns par defaut: `.DS_Store`, `node_modules/`, `*.log`, `*.map`, `.git/`
+- Activation/desactivation du filtrage
+- Interface de gestion des patterns
+- Aide contextuelle avec exemples
+
+#### Interface
+```
+┌─────────────────────────────────────────────────┐
+│  REGLES DE SYNCHRONISATION                      │
+├─────────────────────────────────────────────────┤
+│  [x] Activer le filtrage                        │
+│                                                 │
+│  Patterns d'exclusion:                          │
+│  ┌───────────────────────────────────────────┐  │
+│  │ .DS_Store  *.map  node_modules/  *.log   │  │
+│  └───────────────────────────────────────────┘  │
+│                                                 │
+│  [+ Ajouter pattern]  [Reinitialiser]           │
+└─────────────────────────────────────────────────┘
+```
+
+### 8. Outils Avances FTP (v1.1.0)
+
+#### Nouveaux outils integres
+| Outil | Composant | Description |
+|-------|-----------|-------------|
+| Historique versions | `VersionHistory.tsx` | Snapshots et restauration |
+| Planification | `SyncScheduler.tsx` | Sync automatique |
+| Liens preview | `PreviewLinkGenerator.tsx` | Partage client |
+| Actions post-sync | `PostSyncHooks.tsx` | Webhooks et scripts |
+| Regles de sync | `SyncRulesPanel.tsx` | Exclusions et filtres |
+
+### 9. Dashboard Projet (v1.1.0)
+
+#### Composants
+- `ProjectDashboard.tsx`: Tableau de bord avec statistiques
+- Nouvel onglet "Dashboard" dans les details projet
+
+#### Statistiques affichees
+- Nombre de fichiers
+- Taille totale
+- Derniere sync
+- Couleurs et polices detectees
+- Activite recente
 
 ---
 
@@ -354,6 +439,21 @@ npm run typecheck
 ---
 
 ## Historique des Versions
+
+### v1.1.0 (2026-01-24)
+- **Time Tracking**: Timer par projet avec historique et facturation
+  - Composants: `TimeTracker.tsx`, `TimeTrackerMini`, `TimeSessionsPanel`
+  - Store: `timeStore.ts` avec persistance Zustand
+- **Sync Selective**: Patterns d'exclusion style gitignore
+  - Composant: `SyncRulesPanel.tsx`
+  - Type: `SyncRules` dans `types/index.ts`
+- **Integration composants existants**:
+  - Dashboard projet (nouvel onglet)
+  - PreviewLinkGenerator (outils avances)
+  - PostSyncHooks (outils avances)
+- **UI amélioree**:
+  - TimeTrackerMini dans le header projet
+  - 6 outils avances dans l'onglet FTP
 
 ### v1.0.1 (2026-01-24)
 - Refactoring FTPSection et ProjectFileTree

@@ -1,0 +1,441 @@
+/* Time Tracker Styles */
+
+.time-tracker {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.time-tracker.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary-alpha);
+}
+
+.time-tracker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.time-tracker-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.time-tracker-header .header-title {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.details-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.details-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+}
+
+.details-toggle .rotated {
+  transform: rotate(180deg);
+}
+
+.time-tracker-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.timer-display {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timer-display .timer-value {
+  font-size: 32px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1;
+}
+
+.timer-display .timer-value.running {
+  color: var(--primary);
+}
+
+.timer-display .timer-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.timer-controls .btn-stop {
+  background: var(--error);
+  color: white;
+  border-color: var(--error);
+}
+
+.timer-controls .btn-stop:hover {
+  background: var(--error-hover, #c0392b);
+}
+
+.time-tracker-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.time-tracker-stats .stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.time-tracker-stats .stat-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.time-tracker-stats .stat-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.time-tracker-details {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.details-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.details-row svg {
+  color: var(--text-tertiary);
+}
+
+.details-row span:last-child {
+  margin-left: auto;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.details-row.highlight {
+  background: var(--bg-tertiary);
+  margin: 0 -16px;
+  padding: 8px 16px;
+}
+
+.details-row .billable-value {
+  color: var(--success);
+  font-size: 14px;
+}
+
+/* Compact version */
+.time-tracker-compact {
+  display: inline-flex;
+}
+
+.timer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.timer-toggle:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text);
+  border-color: var(--primary);
+}
+
+.timer-toggle.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.timer-toggle.active:hover {
+  background: var(--primary-hover);
+}
+
+.timer-toggle.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.timer-toggle .icon-stop {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* Mini version for header */
+.time-tracker-mini {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.time-tracker-mini:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--primary);
+}
+
+.time-tracker-mini.active {
+  background: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+
+.time-tracker-mini.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.time-tracker-mini .pulse-indicator {
+  width: 6px;
+  height: 6px;
+  background: white;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.time-tracker-mini .mini-timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Sessions Panel */
+.time-sessions-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 500px;
+}
+
+.time-sessions-panel .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.time-sessions-panel .panel-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.time-sessions-panel .btn-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.time-sessions-panel .btn-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+}
+
+.panel-summary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-item .summary-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-item .summary-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.summary-item.total .summary-value {
+  color: var(--success);
+}
+
+.summary-item.rate .rate-edit {
+  display: flex;
+  gap: 4px;
+}
+
+.summary-item.rate .rate-edit input {
+  width: 60px;
+  padding: 4px 8px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.summary-item.rate .rate-edit button {
+  padding: 4px 8px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.summary-item.rate .rate-button {
+  background: none;
+  border: 1px dashed var(--border);
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.summary-item.rate .rate-button:hover {
+  border-color: var(--primary);
+  background: var(--bg-tertiary);
+}
+
+.sessions-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty-sessions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  color: var(--text-secondary);
+  gap: 8px;
+}
+
+.empty-sessions p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  position: relative;
+}
+
+.session-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.session-item .session-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-item .session-date {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.session-item .session-duration {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-item .session-notes {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.session-item .btn-delete {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--error);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.session-item:hover .btn-delete {
+  opacity: 1;
+}
+
+.session-item .btn-delete:hover {
+  background: var(--error-alpha, rgba(231, 76, 60, 0.1));
+}

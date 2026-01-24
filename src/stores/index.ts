@@ -15,3 +15,5 @@ export {
   DAY_OPTIONS
 } from './scheduleStore';
 export { useHooksStore } from './hooksStore';
+export { useTimeStore, formatDuration, formatDurationShort, calculateBillable } from './timeStore';
+export type { TimeSession, ProjectTimeStats } from './timeStore';
