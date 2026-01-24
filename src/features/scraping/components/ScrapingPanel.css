@@ -744,3 +744,32 @@
   font-size: 12px;
   color: var(--error);
 }
+
+/* ============================================
+   Export Buttons
+   ============================================ */
+
+.scraping-export-buttons {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.scraping-export-buttons .btn {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.scraping-export-buttons .btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Adjust actions layout */
+.scraping-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}

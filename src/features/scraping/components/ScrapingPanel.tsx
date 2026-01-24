@@ -20,6 +20,8 @@ import {
   History,
   ChevronDown,
   ChevronUp,
+  FileJson,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Button, Card, Switch } from '../../../components/ui';
 import { ScrapeResult } from '../../../services/documentationService';
@@ -28,6 +30,7 @@ import { Project, ScrapingRun } from '../../../types';
 import { FullSiteScraper } from '../../../components/FullSiteScraper';
 import { projectService } from '../../../services/projectService';
 import { scrapingService } from '../../../services/scrapingService';
+import { scrapingExportService, ExportFormat } from '../../../services/scrapingExportService';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/tauri';
 import './ScrapingPanel.css';
@@ -337,6 +340,48 @@ export function ScrapingPanel({
     });
   };
 
+  // Export handlers
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async (format: ExportFormat) => {
+    if (!previousScraping) return;
+
+    setIsExporting(true);
+    try {
+      const filePath = await scrapingExportService.exportScrapingData(
+        projectName,
+        previousScraping,
+        format
+      );
+      if (filePath) {
+        console.log(`Exported to: ${filePath}`);
+      }
+    } catch (err) {
+      console.error('Export error:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportColors = async () => {
+    if (!previousScraping?.stats?.colors) return;
+
+    setIsExporting(true);
+    try {
+      const filePath = await scrapingExportService.exportColorsAsCSS(
+        projectName,
+        previousScraping.stats.colors
+      );
+      if (filePath) {
+        console.log(`Colors exported to: ${filePath}`);
+      }
+    } catch (err) {
+      console.error('Export colors error:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const getLogIcon = (type: LogEntry['type']) => {
     switch (type) {
       case 'page': return <Globe size={12} />;
@@ -505,6 +550,37 @@ export function ScrapingPanel({
               <RefreshCw size={16} />
               Relancer un scraping
             </Button>
+            <div className="scraping-export-buttons">
+              <Button
+                variant="ghost"
+                onClick={() => handleExport('json')}
+                disabled={isExporting}
+                title="Exporter en JSON"
+              >
+                <FileJson size={16} />
+                JSON
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => handleExport('csv')}
+                disabled={isExporting}
+                title="Exporter en CSV"
+              >
+                <FileSpreadsheet size={16} />
+                CSV
+              </Button>
+              {previousScraping!.stats!.colors.length > 0 && (
+                <Button
+                  variant="ghost"
+                  onClick={handleExportColors}
+                  disabled={isExporting}
+                  title="Exporter les couleurs en CSS"
+                >
+                  <Palette size={16} />
+                  CSS
+                </Button>
+              )}
+            </div>
             <Button variant="ghost" onClick={() => setShowDeleteModal(true)} className="btn-danger">
               <Trash2 size={16} />
               Supprimer

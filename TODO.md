@@ -183,7 +183,10 @@
   - Historique limité aux 10 derniers runs
   - Section dépliable dans ScrapingPanel
   - Détails de chaque run avec couleurs et erreurs
-- [ ] Export des résultats de scraping en JSON/CSV
+- [x] Export des résultats de scraping en JSON/CSV
+  - Service `scrapingExportService.ts` avec export JSON/CSV
+  - Boutons d'export dans ScrapingPanel (JSON, CSV, CSS couleurs)
+  - Export des couleurs en variables CSS
 
 ### Indicateur de progression pour la synchronisation FTP (TERMINÉ)
 - [x] Store `syncStore.ts` pour gérer l'état de synchronisation
