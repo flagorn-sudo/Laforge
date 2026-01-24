@@ -1,16 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  DndContext,
-  DragOverlay,
-  useDraggable,
-  useDroppable,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragStartEvent,
-  DragEndEvent,
-  DragOverEvent,
-} from '@dnd-kit/core';
+import { useCallback } from 'react';
+import { DndContext, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core';
 import {
   Folder,
   FolderOpen,
@@ -19,16 +8,22 @@ import {
   RefreshCw,
   FolderPlus,
   Trash2,
-  Edit3,
   ChevronRight,
   ChevronDown,
   Loader,
   AlertTriangle,
 } from 'lucide-react';
-import { fileSystemService, DirectoryNode } from '../../../services/fileSystemService';
+import { fileSystemService } from '../../../services/fileSystemService';
 import { projectService } from '../../../services/projectService';
 import { Button, Modal, ContextMenu } from '../../../components/ui';
-import type { ContextMenuItem } from '../../../components/ui';
+import {
+  useFileTree,
+  useFileTreeDragAndDrop,
+  useFileTreeModals,
+  useFileTreeContextMenu,
+  toDroppableId,
+  FlatFileNode,
+} from '../hooks';
 
 interface ProjectFileTreeProps {
   projectPath: string;
@@ -36,23 +31,7 @@ interface ProjectFileTreeProps {
   onFileSelect?: (path: string) => void;
 }
 
-// Flat node for rendering
-interface FlatFileNode {
-  path: string;
-  name: string;
-  depth: number;
-  isDirectory: boolean;
-  isExpanded: boolean;
-  isLocked: boolean;
-  hasChildren: boolean;
-  size?: number;
-}
-
-// Helper to create droppable ID
-const toDroppableId = (path: string) => `drop:${path}`;
-const fromDroppableId = (droppableId: string) => droppableId.replace('drop:', '');
-
-// Draggable/Droppable tree item
+// Draggable/Droppable tree item component
 interface DraggableFileItemProps {
   node: FlatFileNode;
   isDropTarget: boolean;
@@ -168,353 +147,34 @@ export function ProjectFileTree({
   lockedFolders = ['_Inbox'],
   onFileSelect,
 }: ProjectFileTreeProps) {
-  const [tree, setTree] = useState<DirectoryNode | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-  const [, setSelectedPath] = useState<string | null>(null);
+  // File tree state
+  const {
+    tree,
+    flatNodes,
+    loading,
+    error,
+    loadTree,
+    toggleExpand,
+    setSelectedPath,
+  } = useFileTree({ projectPath, lockedFolders });
 
-  // DnD state
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
+  // Modal handlers
+  const modals = useFileTreeModals({
+    onOperationComplete: loadTree,
+  });
 
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    node: FlatFileNode;
-  } | null>(null);
+  // Drag and drop
+  const dnd = useFileTreeDragAndDrop({
+    flatNodes,
+    onMoveComplete: loadTree,
+  });
 
-  // Modal states
-  const [newFolderModal, setNewFolderModal] = useState<{
-    parentPath: string;
-    parentName: string;
-  } | null>(null);
-  const [renameModal, setRenameModal] = useState<{
-    path: string;
-    currentName: string;
-    isDirectory: boolean;
-  } | null>(null);
-  const [deleteModal, setDeleteModal] = useState<{
-    path: string;
-    name: string;
-    isDirectory: boolean;
-  } | null>(null);
-
-  const [newFolderName, setNewFolderName] = useState('');
-  const [renameName, setRenameName] = useState('');
-  const [isOperating, setIsOperating] = useState(false);
-
-  // Configure dnd-kit sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  );
-
-  // Load directory tree
-  const loadTree = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const result = await fileSystemService.readDirectoryTree(projectPath, 10);
-      setTree(result);
-
-      // Expand root and first level by default
-      const initialExpanded = new Set<string>([result.path]);
-      result.children?.forEach((child) => {
-        if (child.isDirectory) {
-          initialExpanded.add(child.path);
-        }
-      });
-      setExpandedPaths(initialExpanded);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load directory');
-    } finally {
-      setLoading(false);
-    }
-  }, [projectPath]);
-
-  useEffect(() => {
-    loadTree();
-  }, [loadTree]);
-
-  // Flatten tree for rendering
-  const flattenTree = useCallback(
-    (node: DirectoryNode, depth: number): FlatFileNode[] => {
-      const name = fileSystemService.getName(node.path);
-      const isLocked = lockedFolders.includes(name);
-      const isExpanded = expandedPaths.has(node.path);
-      const hasChildren = node.isDirectory && (node.children?.length ?? 0) > 0;
-
-      const flatNode: FlatFileNode = {
-        path: node.path,
-        name,
-        depth,
-        isDirectory: node.isDirectory,
-        isExpanded,
-        isLocked,
-        hasChildren,
-        size: node.size,
-      };
-
-      if (node.isDirectory && isExpanded && node.children) {
-        return [flatNode, ...node.children.flatMap((child) => flattenTree(child, depth + 1))];
-      }
-
-      return [flatNode];
-    },
-    [expandedPaths, lockedFolders]
-  );
-
-  const flatNodes = useMemo(() => {
-    if (!tree) return [];
-    // Start from children to not show root
-    return tree.children?.flatMap((child) => flattenTree(child, 0)) ?? [];
-  }, [tree, flattenTree]);
-
-  const activeNode = useMemo(
-    () => flatNodes.find((n) => n.path === activeId) || null,
-    [flatNodes, activeId]
-  );
-
-  // Toggle expand/collapse
-  const toggleExpand = useCallback((path: string) => {
-    setExpandedPaths((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  }, []);
-
-  // DnD handlers
-  const handleDragStart = useCallback(
-    (event: DragStartEvent) => {
-      const id = event.active.id as string;
-      const node = flatNodes.find((n) => n.path === id);
-      if (!node || node.isLocked) return;
-      console.log('[ProjectFileTree] dragStart:', id);
-      setActiveId(id);
-    },
-    [flatNodes]
-  );
-
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    if (!event.over) {
-      setOverId(null);
-      return;
-    }
-    const rawId = event.over.id as string;
-    const targetPath = rawId.startsWith('drop:') ? fromDroppableId(rawId) : rawId;
-    setOverId(targetPath);
-  }, []);
-
-  const handleDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      const { active, over } = event;
-      const sourcePath = active.id as string;
-
-      setActiveId(null);
-      setOverId(null);
-
-      if (!over) return;
-
-      const rawTargetId = over.id as string;
-      const targetPath = rawTargetId.startsWith('drop:') ? fromDroppableId(rawTargetId) : rawTargetId;
-
-      // Don't drop on self
-      if (sourcePath === targetPath) return;
-
-      const sourceNode = flatNodes.find((n) => n.path === sourcePath);
-      const targetNode = flatNodes.find((n) => n.path === targetPath);
-
-      if (!sourceNode || !targetNode) {
-        console.error('[ProjectFileTree] Node not found:', { sourcePath, targetPath });
-        return;
-      }
-
-      // Only drop on directories
-      if (!targetNode.isDirectory) {
-        console.log('[ProjectFileTree] Target is not a directory');
-        return;
-      }
-
-      // Don't drop on locked folders
-      if (targetNode.isLocked) {
-        console.log('[ProjectFileTree] Target is locked');
-        return;
-      }
-
-      // Don't drop parent into child
-      if (targetPath.startsWith(sourcePath + '/')) {
-        console.log('[ProjectFileTree] Cannot drop parent into child');
-        return;
-      }
-
-      console.log('[ProjectFileTree] Moving:', sourcePath, '->', targetPath);
-
-      setIsOperating(true);
-      try {
-        const name = fileSystemService.getName(sourcePath);
-        const newPath = fileSystemService.joinPath(targetPath, name);
-        await fileSystemService.moveItem(sourcePath, newPath);
-        await loadTree();
-        console.log('[ProjectFileTree] Move successful');
-      } catch (err) {
-        console.error('[ProjectFileTree] Move failed:', err);
-      } finally {
-        setIsOperating(false);
-      }
-    },
-    [flatNodes, loadTree]
-  );
-
-  const handleDragCancel = useCallback(() => {
-    setActiveId(null);
-    setOverId(null);
-  }, []);
-
-  // Handle context menu
-  const handleContextMenu = useCallback((e: React.MouseEvent, node: FlatFileNode) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, node });
-  }, []);
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(null);
-  }, []);
-
-  // Context menu items
-  const getContextMenuItems = useCallback((): ContextMenuItem[] => {
-    if (!contextMenu) return [];
-
-    const { node } = contextMenu;
-    const items: ContextMenuItem[] = [];
-
-    if (node.isDirectory) {
-      items.push({
-        label: 'Nouveau dossier',
-        icon: <FolderPlus size={14} />,
-        onClick: () => {
-          setNewFolderModal({
-            parentPath: node.path,
-            parentName: node.name,
-          });
-          closeContextMenu();
-        },
-      });
-    }
-
-    if (!node.isLocked) {
-      items.push({
-        label: 'Renommer',
-        icon: <Edit3 size={14} />,
-        onClick: () => {
-          setRenameModal({
-            path: node.path,
-            currentName: node.name,
-            isDirectory: node.isDirectory,
-          });
-          closeContextMenu();
-        },
-      });
-
-      items.push({ label: '', onClick: () => {}, divider: true });
-
-      items.push({
-        label: 'Supprimer',
-        icon: <Trash2 size={14} />,
-        onClick: () => {
-          setDeleteModal({
-            path: node.path,
-            name: node.name,
-            isDirectory: node.isDirectory,
-          });
-          closeContextMenu();
-        },
-        danger: true,
-      });
-    }
-
-    items.push({ label: '', onClick: () => {}, divider: true });
-    items.push({
-      label: 'Ouvrir dans Finder',
-      icon: <Folder size={14} />,
-      onClick: () => {
-        const pathToOpen = node.isDirectory
-          ? node.path
-          : fileSystemService.getParentPath(node.path);
-        projectService.openInFinder(pathToOpen);
-        closeContextMenu();
-      },
-    });
-
-    return items;
-  }, [contextMenu, closeContextMenu]);
-
-  // Create folder
-  const handleCreateFolder = useCallback(async () => {
-    if (!newFolderModal || !newFolderName.trim()) return;
-
-    setIsOperating(true);
-    try {
-      const newPath = fileSystemService.joinPath(newFolderModal.parentPath, newFolderName.trim());
-      await fileSystemService.createFolder(newPath);
-      await loadTree();
-      setNewFolderModal(null);
-      setNewFolderName('');
-    } catch (err) {
-      console.error('Failed to create folder:', err);
-    } finally {
-      setIsOperating(false);
-    }
-  }, [newFolderModal, newFolderName, loadTree]);
-
-  // Rename item
-  const handleRename = useCallback(async () => {
-    if (!renameModal || !renameName.trim()) return;
-
-    setIsOperating(true);
-    try {
-      const parentPath = fileSystemService.getParentPath(renameModal.path);
-      const newPath = fileSystemService.joinPath(parentPath, renameName.trim());
-      await fileSystemService.renameItem(renameModal.path, newPath);
-      await loadTree();
-      setRenameModal(null);
-      setRenameName('');
-    } catch (err) {
-      console.error('Failed to rename:', err);
-    } finally {
-      setIsOperating(false);
-    }
-  }, [renameModal, renameName, loadTree]);
-
-  // Delete item
-  const handleDelete = useCallback(async () => {
-    if (!deleteModal) return;
-
-    setIsOperating(true);
-    try {
-      if (deleteModal.isDirectory) {
-        await fileSystemService.deleteFolder(deleteModal.path, true);
-      } else {
-        await fileSystemService.deleteFile(deleteModal.path);
-      }
-      await loadTree();
-      setDeleteModal(null);
-    } catch (err) {
-      console.error('Failed to delete:', err);
-    } finally {
-      setIsOperating(false);
-    }
-  }, [deleteModal, loadTree]);
+  // Context menu
+  const contextMenuHook = useFileTreeContextMenu({
+    onNewFolder: modals.openNewFolderModal,
+    onRename: modals.openRenameModal,
+    onDelete: modals.openDeleteModal,
+  });
 
   // Handle item click
   const handleItemClick = useCallback(
@@ -526,7 +186,7 @@ export function ProjectFileTree({
         onFileSelect?.(node.path);
       }
     },
-    [toggleExpand, onFileSelect]
+    [toggleExpand, onFileSelect, setSelectedPath]
   );
 
   // Handle double click to open in Finder
@@ -576,10 +236,7 @@ export function ProjectFileTree({
           <button
             className="btn-ghost-small"
             onClick={() =>
-              setNewFolderModal({
-                parentPath: projectPath,
-                parentName: fileSystemService.getName(projectPath),
-              })
+              modals.openNewFolderModal(projectPath, fileSystemService.getName(projectPath))
             }
             title="Nouveau dossier"
           >
@@ -593,11 +250,11 @@ export function ProjectFileTree({
       </div>
 
       <DndContext
-        sensors={sensors}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
+        sensors={dnd.sensors}
+        onDragStart={dnd.handleDragStart}
+        onDragOver={dnd.handleDragOver}
+        onDragEnd={dnd.handleDragEnd}
+        onDragCancel={dnd.handleDragCancel}
       >
         <div className="tree-container file-tree-content">
           <div className="tree-view">
@@ -605,18 +262,18 @@ export function ProjectFileTree({
               <DraggableFileItem
                 key={node.path}
                 node={node}
-                isDropTarget={overId === node.path && activeId !== node.path}
-                isDraggingSource={activeId === node.path}
+                isDropTarget={dnd.overId === node.path && dnd.activeId !== node.path}
+                isDraggingSource={dnd.activeId === node.path}
                 onToggle={toggleExpand}
                 onClick={handleItemClick}
                 onDoubleClick={handleItemDoubleClick}
-                onContextMenu={handleContextMenu}
+                onContextMenu={contextMenuHook.handleContextMenu}
               />
             ))}
           </div>
         </div>
         <DragOverlay dropAnimation={null}>
-          {activeNode && (
+          {dnd.activeNode && (
             <div
               className="tree-item"
               style={{
@@ -631,54 +288,54 @@ export function ProjectFileTree({
                 cursor: 'grabbing',
               }}
             >
-              {activeNode.isDirectory ? (
+              {dnd.activeNode.isDirectory ? (
                 <Folder size={16} style={{ color: 'var(--accent-yellow)' }} />
               ) : (
                 <File size={16} style={{ color: 'var(--text-secondary)' }} />
               )}
-              <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{activeNode.name}</span>
+              <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{dnd.activeNode.name}</span>
             </div>
           )}
         </DragOverlay>
       </DndContext>
 
       {/* Context Menu */}
-      {contextMenu && (
+      {contextMenuHook.contextMenu && (
         <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          items={getContextMenuItems()}
-          onClose={closeContextMenu}
+          x={contextMenuHook.contextMenu.x}
+          y={contextMenuHook.contextMenu.y}
+          items={contextMenuHook.getContextMenuItems()}
+          onClose={contextMenuHook.closeContextMenu}
         />
       )}
 
       {/* New Folder Modal */}
-      {newFolderModal && (
+      {modals.newFolderModal && (
         <Modal
-          title={`Nouveau dossier dans "${newFolderModal.parentName}"`}
-          onClose={() => setNewFolderModal(null)}
+          title={`Nouveau dossier dans "${modals.newFolderModal.parentName}"`}
+          onClose={modals.closeNewFolderModal}
           className="folder-modal"
         >
           <div>
             <label className="form-label">Nom du dossier</label>
             <input
               className="form-input"
-              value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
+              value={modals.newFolderName}
+              onChange={(e) => modals.setNewFolderName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateFolder();
-                if (e.key === 'Escape') setNewFolderModal(null);
+                if (e.key === 'Enter') modals.handleCreateFolder();
+                if (e.key === 'Escape') modals.closeNewFolderModal();
               }}
               placeholder="Nom du dossier..."
               autoFocus
             />
           </div>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 20 }}>
-            <Button variant="secondary" onClick={() => setNewFolderModal(null)}>
+            <Button variant="secondary" onClick={modals.closeNewFolderModal}>
               Annuler
             </Button>
-            <Button onClick={handleCreateFolder} disabled={!newFolderName.trim() || isOperating}>
-              {isOperating ? <Loader size={14} className="spinner" /> : null}
+            <Button onClick={modals.handleCreateFolder} disabled={!modals.newFolderName.trim() || modals.isOperating}>
+              {modals.isOperating ? <Loader size={14} className="spinner" /> : null}
               Creer
             </Button>
           </div>
@@ -686,31 +343,31 @@ export function ProjectFileTree({
       )}
 
       {/* Rename Modal */}
-      {renameModal && (
+      {modals.renameModal && (
         <Modal
-          title={`Renommer "${renameModal.currentName}"`}
-          onClose={() => setRenameModal(null)}
+          title={`Renommer "${modals.renameModal.currentName}"`}
+          onClose={modals.closeRenameModal}
           className="folder-modal"
         >
           <div>
             <label className="form-label">Nouveau nom</label>
             <input
               className="form-input"
-              value={renameName}
-              onChange={(e) => setRenameName(e.target.value)}
+              value={modals.renameName}
+              onChange={(e) => modals.setRenameName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleRename();
-                if (e.key === 'Escape') setRenameModal(null);
+                if (e.key === 'Enter') modals.handleRename();
+                if (e.key === 'Escape') modals.closeRenameModal();
               }}
               autoFocus
             />
           </div>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 20 }}>
-            <Button variant="secondary" onClick={() => setRenameModal(null)}>
+            <Button variant="secondary" onClick={modals.closeRenameModal}>
               Annuler
             </Button>
-            <Button onClick={handleRename} disabled={!renameName.trim() || isOperating}>
-              {isOperating ? <Loader size={14} className="spinner" /> : null}
+            <Button onClick={modals.handleRename} disabled={!modals.renameName.trim() || modals.isOperating}>
+              {modals.isOperating ? <Loader size={14} className="spinner" /> : null}
               Renommer
             </Button>
           </div>
@@ -718,10 +375,10 @@ export function ProjectFileTree({
       )}
 
       {/* Delete Confirmation Modal */}
-      {deleteModal && (
+      {modals.deleteModal && (
         <Modal
-          title={`Supprimer "${deleteModal.name}" ?`}
-          onClose={() => setDeleteModal(null)}
+          title={`Supprimer "${modals.deleteModal.name}" ?`}
+          onClose={modals.closeDeleteModal}
           className="folder-modal"
         >
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
@@ -729,27 +386,27 @@ export function ProjectFileTree({
             <p>
               Etes-vous sur de vouloir supprimer{' '}
               <strong>
-                {deleteModal.isDirectory ? 'le dossier' : 'le fichier'} "{deleteModal.name}"
+                {modals.deleteModal.isDirectory ? 'le dossier' : 'le fichier'} "{modals.deleteModal.name}"
               </strong>{' '}
               ?
             </p>
-            {deleteModal.isDirectory && (
+            {modals.deleteModal.isDirectory && (
               <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 8 }}>
                 Tout le contenu sera supprime definitivement.
               </p>
             )}
           </div>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 20 }}>
-            <Button variant="secondary" onClick={() => setDeleteModal(null)}>
+            <Button variant="secondary" onClick={modals.closeDeleteModal}>
               Annuler
             </Button>
             <Button
               variant="primary"
-              onClick={handleDelete}
-              disabled={isOperating}
+              onClick={modals.handleDelete}
+              disabled={modals.isOperating}
               style={{ background: 'var(--error)' }}
             >
-              {isOperating ? <Loader size={14} className="spinner" /> : <Trash2 size={14} />}
+              {modals.isOperating ? <Loader size={14} className="spinner" /> : <Trash2 size={14} />}
               Supprimer
             </Button>
           </div>

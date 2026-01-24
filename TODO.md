@@ -199,8 +199,18 @@
 - [x] Bascule automatique sur l'onglet FTP au lancement de la sync
 
 ### Refactoring restant
-- [ ] Finaliser le split de `FTPSection.tsx` en sous-composants
-- [ ] Extraire les hooks de `ProjectFileTree.tsx`
+- [x] Finaliser le split de `FTPSection.tsx` en sous-composants
+  - `FTPConnectionCard.tsx` - Carte connexion (180 lignes)
+  - `FTPSyncCard.tsx` - Carte synchronisation (130 lignes)
+  - `FTPSmartPaste.tsx` - Import automatique (90 lignes)
+  - `ftpCredentialsParser.ts` - Utilitaire parsing (120 lignes)
+  - `FTPSection.tsx` réduit de 525 à 93 lignes
+- [x] Extraire les hooks de `ProjectFileTree.tsx`
+  - `useFileTree.ts` - Chargement et navigation arborescence (120 lignes)
+  - `useFileTreeDragAndDrop.ts` - Logique drag & drop (135 lignes)
+  - `useFileTreeModals.ts` - Gestion modals créer/renommer/supprimer (160 lignes)
+  - `useFileTreeContextMenu.ts` - Menu contextuel (95 lignes)
+  - `ProjectFileTree.tsx` réduit de 770 à 427 lignes
 
 ---
 

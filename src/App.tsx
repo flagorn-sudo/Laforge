@@ -159,10 +159,14 @@ export function App() {
     onSyncProject((projectId) => {
       const project = projects.find((p) => p.id === projectId);
       if (project && project.sftp?.configured) {
+        // Navigate to the project view first
+        setCurrentView('projects');
+        selectProject(projectId);
+        // Then start the sync
         handleSync(project);
       }
     });
-  }, [projects, onSyncProject]);
+  }, [projects, onSyncProject, selectProject]);
 
   // Handle native macOS menu events
   useMenuEvents({
