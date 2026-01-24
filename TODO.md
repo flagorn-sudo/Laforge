@@ -149,26 +149,24 @@
 
 ## Priorite Haute
 
-### Revoir système d'affichage des projets (À FAIRE)
+### Revoir système d'affichage des projets (TERMINÉ)
 **Objectif**: Simplifier l'interface - la sidebar actuelle n'est peut-être pas très utile.
 
-**Problèmes identifiés**:
-- La sidebar affiche une liste de projets qui duplique la vue centrale
-- Avec l'ajout des filtres et recherche, les deux vues sont redondantes
-- Espace gaspillé dans la colonne de gauche
+**Solution implementee**: Option 2 - Sidebar minimale (MiniSidebar)
+- [x] Suppression de l'ancienne `Sidebar.tsx` avec liste de projets redondante
+- [x] Création de `MiniSidebar.tsx` avec navigation compacte (logo, projets, scraping, settings)
+- [x] `FilterBar.tsx` avec filtres multi-sélection des statuts
+- [x] Persistance des préférences de filtres (statuts, tri, vue)
+- [x] Bouton toggle "Filtres" avec badge du nombre de filtres actifs
 
-**Options à évaluer**:
-1. **Supprimer la sidebar** - Garder uniquement la vue centrale avec filtres/recherche
-2. **Sidebar minimale** - Juste le logo, bouton nouveau projet, et bouton paramètres
-3. **Sidebar contextuelle** - Afficher infos du projet sélectionné au lieu de la liste
-
-**Fichiers concernés**:
-- `src/components/Sidebar.tsx`
-- `src/components/ProjectList.tsx`
-- `src/App.tsx`
-- `src/styles/globals.css`
-
-**Status**: À PLANIFIER
+**Fichiers modifiés**:
+- `src/components/Sidebar.tsx` - Supprimé
+- `src/components/MiniSidebar.tsx` - Nouveau (navigation compacte)
+- `src/components/FilterBar.tsx` - Nouveau (barre de filtres expansible)
+- `src/components/ProjectList.tsx` - Intégration FilterBar
+- `src/hooks/useFilterPreferences.ts` - Hook de persistance
+- `src/stores/settingsStore.ts` - filterPreferences ajouté
+- `src/App.tsx` - MiniSidebar intégré
 
 ---
 
@@ -257,11 +255,34 @@
 
 ## Prochaines tâches
 
-### Revoir système d'affichage des projets (À FAIRE)
-**Objectif**: Simplifier l'interface (sidebar redondante avec liste centrale)
-
-### FileWatcher (_Inbox) (PLANIFIÉ)
+### FileWatcher (_Inbox) (TERMINÉ)
 **Objectif**: Trier automatiquement les fichiers déposés dans _Inbox
 
-### Cache Scraping (Rust) (PLANIFIÉ)
+**Implémentation complète**:
+- [x] Module Rust `watcher.rs` avec FileWatcherManager
+- [x] Commandes Tauri: start_file_watcher, stop_file_watcher, move_file, create_inbox_folder
+- [x] Service frontend `fileWatcherService.ts`
+- [x] Hook `useFileWatcher.ts` intégré dans App.tsx
+- [x] UI dans Settings: AutoOrganizeSection avec toggles et seuil de confiance
+- [x] Intégration Gemini pour catégorisation intelligente des fichiers
+
+**Fichiers**:
+- `src-tauri/src/watcher.rs` - Module Rust pour la surveillance
+- `src/services/fileWatcherService.ts` - Service frontend
+- `src/hooks/useFileWatcher.ts` - Hook React
+- `src/features/settings/components/AutoOrganizeSection.tsx` - UI Settings
+
+### Cache Scraping (Rust) (TERMINÉ)
 **Objectif**: Éviter de re-scraper les mêmes pages
+
+**Implémentation**:
+- [x] Module Rust `scrape_cache.rs` avec ScrapeCache struct
+- [x] Hash SHA-256 des URLs et du contenu
+- [x] TTL configurable (défaut: 7 jours)
+- [x] Commandes Tauri: get_scrape_cache, clear_scrape_cache, is_url_cached, set_scrape_cache_ttl
+- [x] Service frontend `scrapeCacheService.ts`
+- [x] Stockage dans `_Inbox/.scrape_cache.json` par projet
+
+**Fichiers**:
+- `src-tauri/src/scrape_cache.rs` - Module Rust
+- `src/services/scrapeCacheService.ts` - Service frontend

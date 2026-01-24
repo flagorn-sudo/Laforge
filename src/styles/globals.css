@@ -407,6 +407,14 @@ body {
 .btn-primary:hover { filter: brightness(1.1); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.btn-success { background: var(--success); color: white; }
+.btn-success:hover { filter: brightness(1.1); }
+.btn-success:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-danger { background: var(--accent); color: white; }
+.btn-danger:hover { filter: brightness(1.1); }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); }
 .btn-secondary:hover { background: var(--border); }
 

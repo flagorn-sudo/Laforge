@@ -9,6 +9,7 @@ mod scheduler;
 mod transfer_resume;
 mod delta_sync;
 mod full_site_scraper;
+mod scrape_cache;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -2100,6 +2101,45 @@ fn clear_delta_cache(
 }
 
 // ============================================
+// Scrape Cache Commands
+// ============================================
+
+#[tauri::command]
+fn get_scrape_cache(project_path: String) -> Result<Option<scrape_cache::ScrapeCache>, String> {
+    Ok(scrape_cache::ScrapeCache::load(&project_path))
+}
+
+#[tauri::command]
+fn get_scrape_cache_stats(project_path: String) -> Result<Option<scrape_cache::CacheStats>, String> {
+    Ok(scrape_cache::ScrapeCache::load(&project_path).map(|c| c.stats()))
+}
+
+#[tauri::command]
+fn clear_scrape_cache(project_path: String) -> Result<(), String> {
+    if let Some(mut cache) = scrape_cache::ScrapeCache::load(&project_path) {
+        cache.clear();
+        cache.save(&project_path)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn is_url_cached(project_path: String, url: String) -> Result<bool, String> {
+    Ok(scrape_cache::ScrapeCache::load(&project_path)
+        .map(|c| c.is_cached(&url))
+        .unwrap_or(false))
+}
+
+#[tauri::command]
+fn set_scrape_cache_ttl(project_path: String, days: u64) -> Result<(), String> {
+    if let Some(mut cache) = scrape_cache::ScrapeCache::load(&project_path) {
+        cache.set_ttl_days(days);
+        cache.save(&project_path)?;
+    }
+    Ok(())
+}
+
+// ============================================
 // Sync Configuration Commands
 // ============================================
 
@@ -2451,7 +2491,13 @@ fn main() {
             update_delta_cache_after_sync,
             generate_file_signature,
             get_delta_cache_info,
-            clear_delta_cache
+            clear_delta_cache,
+            // Scrape cache commands
+            get_scrape_cache,
+            get_scrape_cache_stats,
+            clear_scrape_cache,
+            is_url_cached,
+            set_scrape_cache_ttl
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

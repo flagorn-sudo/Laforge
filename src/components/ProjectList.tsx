@@ -88,7 +88,7 @@ export function ProjectList({
             {filterBarOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
 
-          <Button onClick={onNewProject}>
+          <Button variant="success" onClick={onNewProject}>
             <FolderPlus size={18} />
             Nouveau
           </Button>
@@ -111,7 +111,7 @@ export function ProjectList({
           <FolderPlus size={48} />
           <h3>Aucun projet</h3>
           <p>Créez votre premier projet ou configurez le dossier de travail dans les paramètres.</p>
-          <Button onClick={onNewProject}>Créer un projet</Button>
+          <Button variant="success" onClick={onNewProject}>Créer un projet</Button>
         </div>
       ) : filteredProjects.length === 0 && hasAnyFilter ? (
         <div className="empty-state">
