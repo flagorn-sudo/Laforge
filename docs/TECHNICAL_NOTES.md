@@ -251,6 +251,16 @@ Modal de reorganisation des dossiers projet:
 - Suggestions de categorisation IA
 - Preview avant application
 
+#### ProjectCard (vue grille)
+Carte projet compacte avec:
+- Titre client/projet avec badge statut cliquable
+- Boutons d'action: Finder, Site web, Sync
+- Indicateur FTP compact (icone + "FTP"):
+  - Vert: FTP configure avec mot de passe
+  - Orange: mot de passe manquant
+  - Gris: non configure
+- Badge de progression sync en temps reel
+
 #### Menu macOS
 Menu natif en francais avec raccourcis:
 - Forge: A propos, Preferences (⌘,)
@@ -635,9 +645,12 @@ npm run typecheck
 - **UI amélioree**:
   - TimeTrackerMini dans le header projet
   - 6 outils avances dans l'onglet FTP
+  - Indicateur FTP compact dans les cartes projet (icone + "FTP")
+  - Cartes projet plus compactes en hauteur
 - **Corrections**:
   - URL de test: ajout automatique du protocole https://
   - Normalisation des URLs dans `projectService.openInBrowser()`
+  - Updater desactive temporairement (voir `docs/TODO.md`)
 
 ### v1.0.1 (2026-01-24)
 - Refactoring FTPSection et ProjectFileTree
