@@ -15,9 +15,10 @@ import { scrapingService } from './services/scrapingService';
 import { geminiService } from './services/geminiService';
 import { configStore } from './services/configStore';
 import { Project } from './types';
-import { checkUpdate, installUpdate } from '@tauri-apps/api/updater';
-import { relaunch } from '@tauri-apps/api/process';
-import { ask } from '@tauri-apps/api/dialog';
+// TODO: Réactiver quand les mises à jour seront configurées
+// import { checkUpdate, installUpdate } from '@tauri-apps/api/updater';
+// import { relaunch } from '@tauri-apps/api/process';
+// import { ask } from '@tauri-apps/api/dialog';
 import './styles/globals.css';
 
 function LoadingScreen() {
@@ -174,26 +175,9 @@ export function App() {
       openModal('about');
     }, [openModal]),
     onCheckUpdates: useCallback(async () => {
-      try {
-        addNotification('info', 'Vérification des mises à jour...');
-        const { shouldUpdate, manifest } = await checkUpdate();
-        if (shouldUpdate && manifest) {
-          const confirmed = await ask(
-            `Version ${manifest.version} disponible. Installer maintenant ?`,
-            { title: 'Mise à jour disponible', type: 'info' }
-          );
-          if (confirmed) {
-            addNotification('info', 'Installation de la mise à jour...');
-            await installUpdate();
-            await relaunch();
-          }
-        } else {
-          addNotification('success', 'Vous avez la dernière version.');
-        }
-      } catch (e) {
-        console.error('Update check failed:', e);
-        addNotification('error', 'Impossible de vérifier les mises à jour.');
-      }
+      // TODO: Configurer les mises à jour automatiques avec signature Tauri
+      // Voir docs/TODO.md pour les étapes de configuration
+      addNotification('info', 'Mises à jour automatiques non configurées. Vérifiez GitHub pour les nouvelles versions.');
     }, [addNotification]),
     onPreferences: useCallback(() => {
       setCurrentView('settings');
