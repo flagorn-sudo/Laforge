@@ -1743,6 +1743,30 @@ body {
   color: var(--text-secondary);
 }
 
+/* FTP indicator compact (card-actions) */
+.ftp-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.ftp-indicator .ftp-label {
+  font-weight: 500;
+}
+
+.ftp-indicator .ftp-status-configured + .ftp-label {
+  color: var(--success);
+}
+
+.ftp-indicator .ftp-status-missing-password + .ftp-label {
+  color: var(--warning);
+}
+
 /* Locked folder styles */
 .tree-item.locked {
   opacity: 0.7;

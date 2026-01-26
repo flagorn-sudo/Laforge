@@ -98,37 +98,6 @@ export function ProjectCard({
         </div>
       </div>
 
-      <div className="card-divider" />
-
-      <div className="card-info">
-        {siteUrl && (
-          <div className="info-row">
-            <Globe size={14} />
-            <span>{siteUrl}</span>
-          </div>
-        )}
-        <div className="info-row">
-          {project.sftp.configured ? (
-            project.sftp.passwordAvailable ? (
-              <>
-                <CheckCircle size={14} className="ftp-status-configured" />
-                <span>FTP configuré</span>
-              </>
-            ) : (
-              <>
-                <AlertCircle size={14} className="ftp-status-missing-password" />
-                <span>Mot de passe manquant</span>
-              </>
-            )
-          ) : (
-            <>
-              <XCircle size={14} className="ftp-status-not-configured" />
-              <span>FTP non configuré</span>
-            </>
-          )}
-        </div>
-      </div>
-
       <div className="card-actions">
         <button
           className="card-action"
@@ -152,6 +121,27 @@ export function ProjectCard({
             <Globe size={16} />
           </button>
         )}
+        <span
+          className="ftp-indicator"
+          title={
+            project.sftp.configured
+              ? project.sftp.passwordAvailable
+                ? 'FTP configuré'
+                : 'Mot de passe FTP manquant'
+              : 'FTP non configuré'
+          }
+        >
+          {project.sftp.configured ? (
+            project.sftp.passwordAvailable ? (
+              <CheckCircle size={14} className="ftp-status-configured" />
+            ) : (
+              <AlertCircle size={14} className="ftp-status-missing-password" />
+            )
+          ) : (
+            <XCircle size={14} className="ftp-status-not-configured" />
+          )}
+          <span className="ftp-label">FTP</span>
+        </span>
         {project.sftp.configured && project.sftp.passwordAvailable && onSync && (
           <button
             className="card-action sync-btn"
