@@ -331,13 +331,20 @@ body { font-family: system-ui, sans-serif; line-height: 1.6; }`
 
   async openInBrowser(url: string): Promise<void> {
     console.log('[projectService] Opening URL in browser:', url);
-    if (!url) {
+    if (!url || !url.trim()) {
       console.error('[projectService] openInBrowser: URL is empty');
       return;
     }
+
+    // Normalize URL: add https:// if protocol is missing
+    let normalizedUrl = url.trim();
+    if (!/^https?:\/\//i.test(normalizedUrl)) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
+
     try {
-      await open(url);
-      console.log('[projectService] URL opened successfully');
+      await open(normalizedUrl);
+      console.log('[projectService] URL opened successfully:', normalizedUrl);
     } catch (err) {
       console.error('[projectService] Failed to open URL:', err);
     }

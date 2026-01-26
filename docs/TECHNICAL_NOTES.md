@@ -1,6 +1,6 @@
 # Notes Techniques - La Forge v1.1.0
 
-## Derniere mise a jour: 2026-01-24
+## Derniere mise a jour: 2026-01-26
 
 ---
 
@@ -30,45 +30,138 @@ La Forge est une application Tauri (Rust + React) pour la gestion de projets web
 
 ```
 src/
-├── components/           # Composants UI principaux
-│   ├── ui/              # Composants reutilisables (Button, Modal, etc.)
-│   ├── MiniSidebar.tsx  # Navigation compacte
-│   ├── FilterBar.tsx    # Barre de filtres expansible
-│   ├── ProjectList.tsx  # Liste des projets
-│   └── ProjectDetail.tsx # Detail d'un projet
+├── components/              # Composants UI principaux (28 fichiers)
+│   ├── ui/                  # Composants reutilisables (12 fichiers)
+│   │   ├── Badge.tsx        # Badges de statut
+│   │   ├── Button.tsx       # Bouton generique
+│   │   ├── Card.tsx         # Conteneur carte
+│   │   ├── ContextMenu.tsx  # Menu contextuel clic-droit
+│   │   ├── Input.tsx        # Champ de saisie
+│   │   ├── Modal.tsx        # Fenetre modale
+│   │   ├── Switch.tsx       # Toggle switch
+│   │   ├── Tabs.tsx         # Navigation par onglets
+│   │   └── TreeView.tsx     # Arborescence fichiers
+│   ├── AboutModal.tsx       # A propos de l'app
+│   ├── CreateProject.tsx    # Formulaire creation projet
+│   ├── DeltaSyncStats.tsx   # Stats sync incrementale
+│   ├── FilterBar.tsx        # Barre filtres expansible
+│   ├── FTPLogWindow.tsx     # Console logs FTP
+│   ├── FullSiteScraper.tsx  # Scraping complet de site
+│   ├── Header.tsx           # En-tete application
+│   ├── MiniSidebar.tsx      # Navigation compacte
+│   ├── Notifications.tsx    # Systeme de toast
+│   ├── PostSyncHooks.tsx    # Webhooks post-sync
+│   ├── PreviewLinkGenerator.tsx # Liens de preview client
+│   ├── ProjectCard.tsx      # Carte projet (vue grille)
+│   ├── ProjectDashboard.tsx # Dashboard avec stats
+│   ├── ProjectDetail.tsx    # Detail projet (1572 lignes)
+│   ├── ProjectForm.tsx      # Formulaire edition
+│   ├── ProjectList.tsx      # Liste des projets
+│   ├── ProjectListRow.tsx   # Ligne projet (vue liste)
+│   ├── ReorganizeProjectModal.tsx # Reorganisation dossiers
+│   ├── ScrapingPage.tsx     # Page scraping dediee (885 lignes)
+│   ├── Settings.tsx         # Formulaire settings
+│   ├── SettingsPage.tsx     # Page settings complete
+│   ├── SmartPaste.tsx       # Import credentials auto
+│   ├── SyncRulesPanel.tsx   # Regles d'exclusion sync
+│   ├── SyncScheduler.tsx    # Planification sync
+│   ├── SyncStatusBadge.tsx  # Badge statut sync
+│   ├── TimeTracker.tsx      # Timer et facturation
+│   └── VersionHistory.tsx   # Historique versions
 ├── features/
 │   ├── projects/
-│   │   ├── components/  # FTPSection, ProjectFileTree
-│   │   ├── hooks/       # useFileTree, useFTPConnection, etc.
-│   │   └── utils/       # ftpCredentialsParser
+│   │   ├── components/      # 9 composants FTP et fichiers
+│   │   │   ├── FTPConnectionCard.tsx  # Connexion FTP
+│   │   │   ├── FTPSection.tsx         # Section principale
+│   │   │   ├── FTPSmartPaste.tsx      # Import auto credentials
+│   │   │   ├── FTPSyncCard.tsx        # Parametres sync
+│   │   │   ├── GeneralSection.tsx     # Infos generales
+│   │   │   ├── ProjectDetailHeader.tsx # En-tete projet
+│   │   │   ├── ProjectFileTree.tsx    # Arborescence (427 lignes)
+│   │   │   └── SyncProgress.tsx       # Progression temps reel
+│   │   ├── tabs/
+│   │   │   └── GeneralTab/  # Onglet general
+│   │   │       ├── ClientProfileCard.tsx
+│   │   │       ├── DesignAnalysisCard.tsx
+│   │   │       └── ProjectInfoCard.tsx
+│   │   ├── modals/
+│   │   │   └── DeleteProjectModal.tsx
+│   │   ├── hooks/           # 5 hooks extraits
+│   │   │   ├── useFTPConnection.ts
+│   │   │   ├── useFileTree.ts
+│   │   │   ├── useFileTreeContextMenu.ts
+│   │   │   ├── useFileTreeDragAndDrop.ts
+│   │   │   └── useFileTreeModals.ts
+│   │   └── utils/
+│   │       └── ftpCredentialsParser.ts
 │   ├── scraping/
-│   │   └── components/  # ScrapingPanel
+│   │   └── components/
+│   │       ├── ScrapingPanel.tsx    # Panneau scraping
+│   │       └── ScrapingProgress.tsx # Stepper progression
 │   └── settings/
-│       └── components/  # BackupSection, AutoOrganizeSection
-├── services/            # Services metier
-│   ├── configStore.ts   # Wrapper Tauri Store
-│   ├── projectService.ts
-│   ├── sftpService.ts
-│   ├── syncService.ts
-│   ├── scrapingService.ts
-│   ├── scrapingExportService.ts
-│   └── gemini/          # Integration Gemini AI
-├── stores/              # Zustand stores
-│   ├── projectStore.ts
-│   ├── settingsStore.ts
-│   ├── syncStore.ts
-│   ├── scrapingStore.ts
-│   ├── versionStore.ts
-│   ├── scheduleStore.ts
-│   ├── hooksStore.ts
-│   └── timeStore.ts     # Time tracking
-├── hooks/               # Hooks React personnalises
-│   ├── useMenuEvents.ts
-│   ├── useSystemTray.ts
-│   ├── useFileWatcher.ts
-│   ├── useFilterPreferences.ts
-│   └── useProjectFiltering.ts
-└── types/               # Types TypeScript
+│       └── components/      # 6 sections settings
+│           ├── AutoOrganizeSection.tsx
+│           ├── BackupSection.tsx
+│           ├── FolderStructureSection.tsx
+│           ├── GeminiSection.tsx
+│           ├── MacOSSettingsSection.tsx
+│           └── WorkspaceSection.tsx
+├── services/                # 20 services metier
+│   ├── backupService.ts     # Sauvegarde projets
+│   ├── briefGenerator.ts    # Generation briefs Markdown
+│   ├── configStore.ts       # Wrapper Tauri Store
+│   ├── deltaService.ts      # Calcul delta sync
+│   ├── documentationService.ts # Generation docs
+│   ├── fileSystemService.ts # Operations fichiers
+│   ├── fileWatcherService.ts # Surveillance fichiers
+│   ├── fullSiteScraperService.ts # Scraping complet
+│   ├── geminiService.ts     # Coordination Gemini
+│   ├── previewService.ts    # Liens preview
+│   ├── projectReorganizeService.ts # Reorganisation
+│   ├── projectService.ts    # CRUD projets
+│   ├── scrapeCacheService.ts # Cache scraping
+│   ├── scrapingExportService.ts # Export JSON/CSV/CSS
+│   ├── scrapingService.ts   # Orchestration scraping
+│   ├── settingsService.ts   # Gestion settings
+│   ├── sftpService.ts       # Operations SFTP/FTP
+│   ├── syncService.ts       # Orchestration sync
+│   ├── templateService.ts   # Gestion templates
+│   ├── transferResumeService.ts # Reprise transferts
+│   ├── gemini/              # Module Gemini AI
+│   │   ├── contentAnalyzer.ts
+│   │   ├── ftpCredentialParser.ts
+│   │   ├── geminiApiClient.ts
+│   │   └── textProcessor.ts
+│   └── documentation/       # Module documentation
+│       ├── fileOrganizer.ts
+│       ├── markdownGenerator.ts
+│       └── webScraper.ts
+├── stores/                  # 10 Zustand stores
+│   ├── hooksStore.ts        # Gestion webhooks
+│   ├── projectStore.ts      # Etat projets
+│   ├── scheduleStore.ts     # Planification
+│   ├── scrapingStore.ts     # Etat scraping (15.8KB)
+│   ├── settingsStore.ts     # Preferences
+│   ├── syncStore.ts         # Etat sync (22.8KB - plus gros)
+│   ├── timeStore.ts         # Sessions temps
+│   ├── uiStore.ts           # Etat UI
+│   └── versionStore.ts      # Historique versions
+├── hooks/                   # 12 hooks React
+│   ├── useAsync.ts          # Operations async
+│   ├── useClientProfile.ts  # Profil client
+│   ├── useColorMerge.ts     # Fusion couleurs
+│   ├── useFileWatcher.ts    # Surveillance fichiers
+│   ├── useFilterPreferences.ts # Persistance filtres
+│   ├── useMenuEvents.ts     # Events menu macOS
+│   ├── useNotification.ts   # Notifications toast
+│   ├── useProjectFiltering.ts # Filtrage projets
+│   ├── useProjectForm.ts    # Formulaire projet
+│   ├── useRetryCountdown.ts # Retry avec compte a rebours
+│   ├── useScraping.ts       # Orchestration scraping
+│   ├── useSyncEvents.ts     # Events sync
+│   └── useSystemTray.ts     # Integration tray
+└── types/                   # Types TypeScript
+    └── index.ts             # Tous les types (SyncRules, TimeSession, etc.)
 ```
 
 ### Modules Rust (src-tauri/src/)
@@ -76,16 +169,35 @@ src/
 | Module | Description |
 |--------|-------------|
 | `main.rs` | Point d'entree, commandes Tauri, menu macOS |
-| `scraper.rs` | Scraping de sites web |
+| `scraper.rs` | Scraping basique de pages web |
 | `tray.rs` | Menu du system tray |
 | `watcher.rs` | Surveillance des fichiers (_Inbox) |
-| `delta_sync.rs` | Synchronisation incrementale |
+| `delta_sync.rs` | Synchronisation incrementale par chunks |
 | `version_history.rs` | Snapshots et restauration |
-| `scheduler.rs` | Planification des syncs |
+| `scheduler.rs` | Planification des syncs (cron) |
 | `parallel_sync.rs` | Transfert multi-connexions |
-| `transfer_resume.rs` | Reprise des transferts |
-| `full_site_scraper.rs` | Scraping complet de sites |
-| `scrape_cache.rs` | Cache de scraping |
+| `transfer_resume.rs` | Reprise des transferts interrompus |
+| `full_site_scraper.rs` | Scraping complet de sites (crawl recursif) |
+| `scrape_cache.rs` | Cache SHA-256 avec TTL configurable |
+
+#### Details Modules Rust
+
+**delta_sync.rs**
+- Comparaison par chunks de fichiers
+- Detection des modifications incrementales
+- Hash MD5 pour verification integrite
+
+**scrape_cache.rs**
+- Hash SHA-256 des URLs et contenus
+- TTL configurable (defaut: 7 jours)
+- Stockage: `_Inbox/.scrape_cache.json`
+- Evite les requetes repetees
+
+**full_site_scraper.rs**
+- Crawl recursif d'un site entier
+- Extraction assets (images, CSS, JS)
+- Limite de profondeur configurable
+- Detection des liens internes vs externes
 
 ---
 
@@ -105,7 +217,39 @@ Barre de filtres expansible:
 - Multi-selection des statuts (Prospect, En dev, Recette, Valide, Live, Archive)
 - Tri par nom ou date
 - Mode vue grille/liste
-- Persistance des preferences
+- Persistance des preferences via `useFilterPreferences`
+- Animation d'expansion/reduction
+- Compteur de projets filtres
+
+#### FTPLogWindow
+Console de logs FTP detaillee:
+- Affichage temps reel des operations
+- Niveaux de logs (info, warning, error)
+- Filtrage par type d'operation
+- Export des logs
+- Auto-scroll avec option de pause
+
+#### DeltaSyncStats
+Statistiques de synchronisation incrementale:
+- Nombre de fichiers modifies/ajoutes/supprimes
+- Taille totale transferee
+- Temps economise vs sync complete
+- Visualisation graphique des changements
+
+#### FullSiteScraper
+Interface de scraping complet de site:
+- URL de depart avec detection automatique du domaine
+- Configuration de la profondeur de crawl
+- Selection des types d'assets (images, CSS, JS, fonts)
+- Progression en temps reel avec estimation
+- Arborescence des fichiers recuperes
+
+#### ReorganizeProjectModal
+Modal de reorganisation des dossiers projet:
+- Glisser-deposer pour reorganiser
+- Detection des fichiers orphelins
+- Suggestions de categorisation IA
+- Preview avant application
 
 #### Menu macOS
 Menu natif en francais avec raccourcis:
@@ -341,6 +485,23 @@ Split de 770 lignes avec extraction des hooks:
 
 **Solution**: Ajout de `selectProject(projectId)` et `setCurrentView('projects')` avant `handleSync()`.
 
+### URL de Test sans protocole (2026-01-26)
+
+**Probleme**: Le bouton "Test" dans le header projet ne fonctionnait pas si l'utilisateur n'avait pas saisi `http://` ou `https://` devant l'URL.
+
+**Solution**: Normalisation automatique de l'URL dans `projectService.openInBrowser()`:
+- Detection de la presence d'un protocole via regex `/^https?:\/\//i`
+- Ajout automatique de `https://` si absent
+- Fonctionne pour les boutons "Site" et "Test"
+
+```typescript
+// projectService.ts
+let normalizedUrl = url.trim();
+if (!/^https?:\/\//i.test(normalizedUrl)) {
+  normalizedUrl = `https://${normalizedUrl}`;
+}
+```
+
 ---
 
 ## Configuration
@@ -423,6 +584,26 @@ npm run typecheck
 
 ---
 
+## Hooks React Personnalises
+
+| Hook | Description |
+|------|-------------|
+| `useAsync` | Gestion des operations asynchrones avec loading/error |
+| `useClientProfile` | Recuperation et mise a jour du profil client |
+| `useColorMerge` | Fusion intelligente des couleurs similaires |
+| `useFileWatcher` | Orchestration de la surveillance fichiers |
+| `useFilterPreferences` | Persistance des preferences de filtrage |
+| `useMenuEvents` | Ecoute des events du menu macOS |
+| `useNotification` | Affichage de notifications toast |
+| `useProjectFiltering` | Logique de filtrage et tri des projets |
+| `useProjectForm` | Gestion de l'etat du formulaire projet |
+| `useRetryCountdown` | Retry avec compte a rebours visuel |
+| `useScraping` | Orchestration du scraping (stepper) |
+| `useSyncEvents` | Ecoute des evenements de synchronisation |
+| `useSystemTray` | Integration avec le system tray macOS |
+
+---
+
 ## Performances
 
 ### Taille du bundle
@@ -440,7 +621,7 @@ npm run typecheck
 
 ## Historique des Versions
 
-### v1.1.0 (2026-01-24)
+### v1.1.0 (2026-01-26)
 - **Time Tracking**: Timer par projet avec historique et facturation
   - Composants: `TimeTracker.tsx`, `TimeTrackerMini`, `TimeSessionsPanel`
   - Store: `timeStore.ts` avec persistance Zustand
@@ -454,6 +635,9 @@ npm run typecheck
 - **UI amélioree**:
   - TimeTrackerMini dans le header projet
   - 6 outils avances dans l'onglet FTP
+- **Corrections**:
+  - URL de test: ajout automatique du protocole https://
+  - Normalisation des URLs dans `projectService.openInBrowser()`
 
 ### v1.0.1 (2026-01-24)
 - Refactoring FTPSection et ProjectFileTree
