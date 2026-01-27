@@ -3,6 +3,7 @@ export interface Project {
   name: string;
   path: string;
   client?: string;
+  displayName?: string;  // Nom d'affichage personnalisé (priorité: displayName > client > name)
   created: string;
   updated: string;
   status: ProjectStatus;
@@ -13,11 +14,13 @@ export interface Project {
   fonts: string[];
   notes?: string;
   localPath?: string;
+  sourcePath?: string;                    // Dossier de développement (relatif à path, ex: "Source")
   referenceWebsites: ReferenceWebsite[];  // Max 5 sites de référence graphique
   clientDescription?: string;             // Description de l'activité client (généré par IA)
   themeTags?: string[];                   // Tags de thème/orientations design
   themeTagsGeneratedAt?: string;          // Date de génération des tags
   syncRules?: SyncRules;                  // Regles de synchronisation selective
+  billing?: ProjectBilling;               // Paramètres de facturation du projet
 }
 
 // Sync Rules for selective synchronization
@@ -26,6 +29,26 @@ export interface SyncRules {
   excludePatterns: string[];              // Patterns gitignore-style a exclure
   includeFolders?: string[];              // Dossiers specifiques a inclure (si vide = tous)
 }
+
+// ============================================
+// Project Billing Types
+// ============================================
+
+export type BillingUnit = 'minute' | 'hour' | 'half_day' | 'day';
+
+export interface ProjectBilling {
+  hourlyRate?: number;          // Taux horaire (si non défini, utilise le global)
+  billingUnit: BillingUnit;     // Unité de facturation
+  minimumBillableMinutes?: number; // Minimum facturable en minutes
+  currency: string;             // Devise (EUR par défaut)
+}
+
+export const BILLING_UNIT_CONFIG: Record<BillingUnit, { label: string; multiplier: number; description: string }> = {
+  minute: { label: 'À la minute', multiplier: 60, description: 'Facturation exacte à la minute' },
+  hour: { label: 'À l\'heure', multiplier: 3600, description: 'Arrondi à l\'heure supérieure' },
+  half_day: { label: 'À la demi-journée', multiplier: 14400, description: '4 heures' },
+  day: { label: 'À la journée', multiplier: 28800, description: '8 heures' },
+};
 
 export type ProjectStatus = 'prospect' | 'development' | 'review' | 'validated' | 'live' | 'archived';
 
@@ -112,8 +135,31 @@ export interface FilterPreferences {
   sortBy: 'name' | 'date';
 }
 
+// ============================================
+// IDE Monitoring Types
+// ============================================
+
+export type SupportedIDE = 'pycharm' | 'vscode' | 'cursor';
+
+export interface IDEMonitoringSettings {
+  enabled: boolean;
+  checkIntervalMs: number;      // Default: 5000 (5 seconds)
+  autoStopDelayMs: number;      // Default: 10000 (10 seconds)
+  preferredIDE: SupportedIDE;
+}
+
+// ============================================
+// Global Billing Settings
+// ============================================
+
+export interface GlobalBillingSettings {
+  defaultRate: number;        // Taux par défaut (ex: 450 pour 450€/jour)
+  defaultUnit: BillingUnit;   // 'hour' | 'half_day' | 'day'
+}
+
 export interface Settings {
-  workspacePath: string;
+  workspacePath: string;           // Emplacement par défaut pour nouveaux projets
+  registeredProjects?: string[];   // Liste des chemins de projets enregistrés
   geminiApiKey?: string;
   geminiModel?: string;
   folderStructure: string[];
@@ -121,6 +167,17 @@ export interface Settings {
   showMenuBarIcon?: boolean;
   viewMode?: 'grid' | 'list';
   filterPreferences?: FilterPreferences;
+  ideMonitoring?: IDEMonitoringSettings;  // Auto-timer IDE detection settings
+  billing?: GlobalBillingSettings;         // Paramètres de facturation par défaut
+}
+
+// État de santé d'un projet (pour projets avec chemins invalides)
+export interface ProjectHealth {
+  path: string;
+  exists: boolean;
+  accessible: boolean;
+  lastChecked: string;
+  error?: string;
 }
 
 export interface AutoOrganizeSettings {
@@ -452,4 +509,17 @@ export interface DeltaTransferStats {
   transfer_size: number;
   savings_bytes: number;
   savings_percent: number;
+}
+
+// ============================================
+// Import Project Types
+// ============================================
+
+export interface ImportAnalysis {
+  name: string;
+  path: string;
+  existingFolders: string[];
+  missingFolders: string[];
+  hasExistingConfig: boolean;
+  suggestedLocalPath: string; // www, public, dist, etc.
 }

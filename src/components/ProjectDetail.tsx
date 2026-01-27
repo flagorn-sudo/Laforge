@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Folder,
+  FolderOpen,
   Globe,
   ExternalLink as ExternalLinkIcon,
   RefreshCw,
@@ -25,8 +26,11 @@ import {
   Link2,
   Webhook,
   Filter,
+  DollarSign,
+  Code2,
 } from 'lucide-react';
-import { Project, PROJECT_STATUS_CONFIG, FTPProtocol, ReferenceWebsite, ProjectStatus } from '../types';
+import { open as dialogOpen } from '@tauri-apps/api/dialog';
+import { Project, PROJECT_STATUS_CONFIG, FTPProtocol, ReferenceWebsite, ProjectStatus, ProjectBilling, BillingUnit, GlobalBillingSettings } from '../types';
 import { ReorganizeProjectModal } from './ReorganizeProjectModal';
 import { projectService } from '../services/projectService';
 import { sftpService } from '../services/sftpService';
@@ -46,9 +50,12 @@ import { PostSyncHooks } from './PostSyncHooks';
 import { TimeTrackerMini, TimeTracker, TimeSessionsPanel } from './TimeTracker';
 import { SyncRulesPanel } from './SyncRulesPanel';
 import { SyncRules } from '../types';
+import { useSettingsStore } from '../stores/settingsStore';
 import { useFTPConnection } from '../features/projects/hooks/useFTPConnection';
-import { useSyncEvents } from '../hooks';
+import { useSyncEvents, useIDEMonitor } from '../hooks';
 import { useUIStore, useSyncStore, useProjectStore } from '../stores';
+import { useTimeStore, calculateBillableForProject } from '../stores/timeStore';
+import { getProjectDisplayName, getProjectSubtitle } from '../utils/projectDisplay';
 
 /**
  * Convert hex color to RGB
@@ -163,6 +170,8 @@ export function ProjectDetail({
   const [showSyncRules, setShowSyncRules] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [unregistering, setUnregistering] = useState(false);
+  const { unregisterProject } = useSettingsStore();
   const [analyzing, setAnalyzing] = useState(false);
   const [generatingBrief, setGeneratingBrief] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -191,6 +200,14 @@ export function ProjectDetail({
     project.referenceWebsites || []
   );
 
+  // Display name state
+  const [displayName, setDisplayName] = useState(project.displayName || '');
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
+
+  // Source path state (development folder)
+  const [sourcePath, setSourcePath] = useState(project.sourcePath || '');
+  const [editingSourcePath, setEditingSourcePath] = useState(false);
+
   // Client profile state
   const [clientDescription, setClientDescription] = useState(project.clientDescription || '');
   const [themeTags, setThemeTags] = useState<string[]>(project.themeTags || []);
@@ -204,6 +221,22 @@ export function ProjectDetail({
   const [editingTestUrl, setEditingTestUrl] = useState(false);
   const [briefExists, setBriefExists] = useState(false);
   const [briefPath, setBriefPath] = useState('');
+
+  // Billing state
+  const [projectHourlyRate, setProjectHourlyRate] = useState<string>(
+    project.billing?.hourlyRate?.toString() || ''
+  );
+  const [billingUnit, setBillingUnit] = useState<BillingUnit>(
+    project.billing?.billingUnit || 'hour'
+  );
+  const [minimumBillableMinutes, setMinimumBillableMinutes] = useState<string>(
+    project.billing?.minimumBillableMinutes?.toString() || ''
+  );
+  // Global billing from settings (with fallback)
+  const globalBilling: GlobalBillingSettings = useSettingsStore((state) => state.billing) || {
+    defaultRate: 75,
+    defaultUnit: 'hour' as BillingUnit,
+  };
 
   const {
     testing,
@@ -232,6 +265,17 @@ export function ProjectDetail({
   useSyncEvents({
     projectId: project.id,
     enabled: syncing,
+  });
+
+  // IDE monitoring for auto-timer
+  // Use sourcePath if defined, otherwise project root
+  const devPath = project.sourcePath
+    ? `${project.path}/${project.sourcePath}`
+    : project.path;
+
+  useIDEMonitor({
+    projectId: project.id,
+    projectPath: devPath,
   });
 
   // Editing protection: Block fetchProjects while editing this project
@@ -264,6 +308,11 @@ export function ProjectDetail({
     setReferenceWebsites(project.referenceWebsites || []);
     setClientDescription(project.clientDescription || '');
     setThemeTags(project.themeTags || []);
+    setDisplayName(project.displayName || '');
+    setSourcePath(project.sourcePath || '');
+    setProjectHourlyRate(project.billing?.hourlyRate?.toString() || '');
+    setBillingUnit(project.billing?.billingUnit || 'hour');
+    setMinimumBillableMinutes(project.billing?.minimumBillableMinutes?.toString() || '');
     setHasChanges(false);
 
     // 2. Load password from keychain if FTP is configured
@@ -328,6 +377,18 @@ export function ProjectDetail({
       onBack();
     } catch {
       setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
+
+  const handleUnregister = () => {
+    if (unregistering) return;
+    setUnregistering(true);
+    try {
+      unregisterProject(project.path);
+      onBack();
+    } catch {
+      setUnregistering(false);
       setShowDeleteModal(false);
     }
   };
@@ -687,6 +748,108 @@ export function ProjectDetail({
     addNotification('success', `Statut changé en "${PROJECT_STATUS_CONFIG[newStatus].label}"`);
   };
 
+  const handleSaveDisplayName = async () => {
+    setEditingDisplayName(false);
+    const updated: Project = {
+      ...project,
+      displayName: displayName.trim() || undefined,
+      updated: new Date().toISOString(),
+    };
+    await projectService.saveProject(updated);
+    onUpdate(updated);
+    addNotification('success', 'Nom d\'affichage enregistré');
+  };
+
+  const handleSaveSourcePath = async () => {
+    setEditingSourcePath(false);
+    const updated: Project = {
+      ...project,
+      sourcePath: sourcePath.trim() || undefined,
+      updated: new Date().toISOString(),
+    };
+    await projectService.saveProject(updated);
+    onUpdate(updated);
+    addNotification('success', 'Dossier de développement enregistré');
+  };
+
+  const handleSelectSourcePath = async () => {
+    const selected = await dialogOpen({
+      directory: true,
+      multiple: false,
+      defaultPath: project.path,
+      title: 'Sélectionner le dossier de développement',
+    });
+    if (selected && typeof selected === 'string') {
+      // Extract relative path from project root
+      if (selected.startsWith(project.path + '/')) {
+        const relativePath = selected.substring(project.path.length + 1);
+        setSourcePath(relativePath);
+        // Auto-save
+        const updated: Project = {
+          ...project,
+          sourcePath: relativePath,
+          updated: new Date().toISOString(),
+        };
+        await projectService.saveProject(updated);
+        onUpdate(updated);
+        addNotification('success', 'Dossier de développement enregistré');
+      } else if (selected === project.path) {
+        // User selected the root folder - clear sourcePath
+        setSourcePath('');
+        const updated: Project = {
+          ...project,
+          sourcePath: undefined,
+          updated: new Date().toISOString(),
+        };
+        await projectService.saveProject(updated);
+        onUpdate(updated);
+        addNotification('success', 'Dossier de développement: racine du projet');
+      } else {
+        addNotification('warning', 'Le dossier doit être à l\'intérieur du projet');
+      }
+    }
+  };
+
+  const handleSaveBilling = async () => {
+    const rate = projectHourlyRate ? parseFloat(projectHourlyRate) : undefined;
+    const minMinutes = minimumBillableMinutes ? parseInt(minimumBillableMinutes, 10) : undefined;
+
+    const billing: ProjectBilling | undefined = (rate || billingUnit !== 'hour' || minMinutes)
+      ? {
+          hourlyRate: rate,
+          billingUnit,
+          minimumBillableMinutes: minMinutes,
+          currency: 'EUR',
+        }
+      : undefined;
+
+    const updated: Project = {
+      ...project,
+      billing,
+      updated: new Date().toISOString(),
+    };
+    await projectService.saveProject(updated);
+    onUpdate(updated);
+    addNotification('success', 'Paramètres de facturation enregistrés');
+  };
+
+  // Build current billing settings for TimeTracker
+  // Use project override if defined, otherwise use global billing settings
+  const currentBilling: ProjectBilling | undefined = project.billing || (
+    (projectHourlyRate || billingUnit !== globalBilling.defaultUnit || minimumBillableMinutes)
+      ? {
+          hourlyRate: projectHourlyRate ? parseFloat(projectHourlyRate) : undefined,
+          billingUnit,
+          minimumBillableMinutes: minimumBillableMinutes ? parseInt(minimumBillableMinutes, 10) : undefined,
+          currency: 'EUR',
+        }
+      : undefined
+  );
+
+  // Effective unit for display (cascade: project > global > fallback)
+  const effectiveUnit = project.billing?.billingUnit ?? globalBilling.defaultUnit;
+  const effectiveUnitLabel = effectiveUnit === 'hour' ? 'h' : effectiveUnit === 'half_day' ? '½j' : 'j';
+
   const statusConfig = PROJECT_STATUS_CONFIG[project.status];
   const canSync = project.sftp.configured || (sftpForm.host && sftpForm.username && sftpForm.password);
 
@@ -705,8 +868,8 @@ export function ProjectDetail({
           <ArrowLeft size={20} />
         </button>
         <div className="detail-title">
-          <h1>{project.client || project.name}</h1>
-          {project.client && <span className="subtitle">{project.name}</span>}
+          <h1>{getProjectDisplayName(project)}</h1>
+          {getProjectSubtitle(project) && <span className="subtitle">{getProjectSubtitle(project)}</span>}
         </div>
         <TimeTrackerMini projectId={project.id} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -781,8 +944,86 @@ export function ProjectDetail({
               <Card title="Informations">
                 <div className="card-info">
                   <div className="info-row">
+                    <strong>Nom d'affichage:</strong>
+                    {editingDisplayName ? (
+                      <div className="add-tag-inline" style={{ flex: 1 }}>
+                        <input
+                          type="text"
+                          value={displayName}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                          placeholder={project.client || project.name}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveDisplayName();
+                            if (e.key === 'Escape') {
+                              setEditingDisplayName(false);
+                              setDisplayName(project.displayName || '');
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <button onClick={handleSaveDisplayName}>OK</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                        <span>{displayName || project.client || project.name}</span>
+                        <button
+                          className="url-remove"
+                          onClick={() => setEditingDisplayName(true)}
+                          title="Modifier"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          <Edit3 size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="info-row">
                     <strong>Dossier:</strong>
                     <span>{project.path}</span>
+                  </div>
+                  <div className="info-row">
+                    <strong>Dossier de développement:</strong>
+                    {editingSourcePath ? (
+                      <div className="add-tag-inline" style={{ flex: 1 }}>
+                        <input
+                          type="text"
+                          value={sourcePath}
+                          onChange={(e) => setSourcePath(e.target.value)}
+                          placeholder="(racine du projet)"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveSourcePath();
+                            if (e.key === 'Escape') {
+                              setEditingSourcePath(false);
+                              setSourcePath(project.sourcePath || '');
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <button onClick={handleSaveSourcePath}>OK</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                        <span style={{ color: sourcePath ? 'var(--text)' : 'var(--text-secondary)', fontStyle: sourcePath ? 'normal' : 'italic' }}>
+                          {sourcePath || '(racine du projet)'}
+                        </span>
+                        <button
+                          className="url-remove"
+                          onClick={handleSelectSourcePath}
+                          title="Sélectionner le dossier de développement"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          <FolderOpen size={12} />
+                        </button>
+                        <button
+                          className="url-remove"
+                          onClick={() => setEditingSourcePath(true)}
+                          title="Saisir manuellement"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          <Edit3 size={12} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {project.client && (
                     <div className="info-row">
@@ -938,7 +1179,84 @@ export function ProjectDetail({
               <TimeTracker
                 projectId={project.id}
                 projectName={project.client || project.name}
+                projectBilling={currentBilling}
+                globalBilling={globalBilling}
+                onOpenHistory={() => setShowTimeSessions(true)}
               />
+
+              {/* Billing Settings */}
+              <Card title="Facturation">
+                <div className="billing-settings">
+                  {/* Current effective rate display */}
+                  {!projectHourlyRate && (
+                    <div className="billing-row billing-info">
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        Taux global: {globalBilling.defaultRate}€/{effectiveUnitLabel}
+                      </span>
+                    </div>
+                  )}
+                  <div className="billing-row">
+                    <label>Tarif personnalise</label>
+                    <div className="billing-input-group">
+                      <input
+                        type="number"
+                        value={projectHourlyRate}
+                        onChange={(e) => {
+                          setProjectHourlyRate(e.target.value);
+                          setHasChanges(true);
+                        }}
+                        placeholder={`${globalBilling.defaultRate}`}
+                        min="0"
+                        step="0.01"
+                      />
+                      <span className="billing-unit">€ /</span>
+                      <select
+                        value={billingUnit}
+                        onChange={(e) => {
+                          setBillingUnit(e.target.value as BillingUnit);
+                          setHasChanges(true);
+                        }}
+                        className="billing-unit-select"
+                      >
+                        <option value="hour">h</option>
+                        <option value="half_day">½j</option>
+                        <option value="day">j</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="billing-row billing-total">
+                    <label>Total cumule</label>
+                    <div className="billing-amount-display">
+                      <span className="billing-amount-value">
+                        {(() => {
+                          const store = useTimeStore.getState();
+                          const stats = store.getProjectStats(project.id);
+                          const activeSession = store.activeSession;
+                          const elapsed = activeSession?.projectId === project.id
+                            ? Math.floor((Date.now() - new Date(activeSession.startTime).getTime()) / 1000)
+                            : 0;
+                          const totalSeconds = stats.totalSeconds + elapsed;
+                          const billingInfo = calculateBillableForProject(
+                            totalSeconds,
+                            currentBilling,
+                            globalBilling.defaultRate,
+                            globalBilling.defaultUnit
+                          );
+                          return `${billingInfo.amount.toFixed(2)}€`;
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={handleSaveBilling}
+                    style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}
+                  >
+                    <DollarSign size={14} />
+                    Enregistrer
+                  </Button>
+                </div>
+              </Card>
 
               <Card title="Actions rapides">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -949,6 +1267,14 @@ export function ProjectDetail({
                   >
                     <Folder size={16} />
                     Ouvrir dans Finder
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => projectService.openInPyCharm(project.path, project.sourcePath)}
+                    className="action-btn-purple"
+                  >
+                    <Code2 size={16} />
+                    Ouvrir dans PyCharm
                   </Button>
                   <Button
                     variant="secondary"
@@ -1546,29 +1872,95 @@ export function ProjectDetail({
       </Tabs>
 
       {showDeleteModal && (
-        <Modal title="Supprimer le projet" onClose={() => setShowDeleteModal(false)}>
+        <Modal title="Retirer le projet" onClose={() => setShowDeleteModal(false)}>
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <AlertTriangle size={48} style={{ color: 'var(--error)', marginBottom: 16 }} />
-            <p style={{ marginBottom: 8 }}>
-              Êtes-vous sûr de vouloir supprimer le projet{' '}
+            <AlertTriangle size={48} style={{ color: 'var(--warning)', marginBottom: 16 }} />
+            <p style={{ marginBottom: 16 }}>
+              Que souhaitez-vous faire avec le projet{' '}
               <strong>{project.client || project.name}</strong> ?
             </p>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-              Cette action supprimera définitivement le dossier et tous ses fichiers.
-            </p>
           </div>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
-            <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>
-              Annuler
-            </Button>
-            <Button
-              variant="primary"
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <button
+              className="delete-option-btn"
+              onClick={handleUnregister}
+              disabled={unregistering}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '16px',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+                background: 'var(--bg-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                {unregistering ? <Loader size={20} className="spinner" /> : <X size={20} style={{ color: 'var(--warning)' }} />}
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>
+                  Retirer de La Forge
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Le projet ne sera plus affiche, mais le dossier et les fichiers sont conserves.
+                </div>
+              </div>
+            </button>
+            <button
+              className="delete-option-btn"
               onClick={handleDelete}
               disabled={deleting}
-              style={{ background: 'var(--error)' }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '16px',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.15s ease',
+              }}
             >
-              {deleting ? <Loader size={16} className="spinner" /> : <Trash2 size={16} />}
-              Supprimer
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+                background: 'rgba(232, 76, 76, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                {deleting ? <Loader size={20} className="spinner" /> : <Trash2 size={20} style={{ color: 'var(--error)' }} />}
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--error)' }}>
+                  Supprimer definitivement
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Supprime le dossier du projet et tous ses fichiers. Action irreversible.
+                </div>
+              </div>
+            </button>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>
+              Annuler
             </Button>
           </div>
         </Modal>
@@ -1593,6 +1985,8 @@ export function ProjectDetail({
           <TimeSessionsPanel
             projectId={project.id}
             onClose={() => setShowTimeSessions(false)}
+            projectBilling={currentBilling}
+            globalBilling={globalBilling}
           />
         </Modal>
       )}

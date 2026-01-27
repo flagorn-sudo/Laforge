@@ -1,6 +1,6 @@
-# Notes Techniques - La Forge v1.1.0
+# Notes Techniques - La Forge v1.2.0
 
-## Derniere mise a jour: 2026-01-26
+## Derniere mise a jour: 2026-01-27
 
 ---
 
@@ -43,6 +43,7 @@ src/
 │   │   └── TreeView.tsx     # Arborescence fichiers
 │   ├── AboutModal.tsx       # A propos de l'app
 │   ├── CreateProject.tsx    # Formulaire creation projet
+│   ├── ImportProjectModal.tsx # Import projet existant
 │   ├── DeltaSyncStats.tsx   # Stats sync incrementale
 │   ├── FilterBar.tsx        # Barre filtres expansible
 │   ├── FTPLogWindow.tsx     # Console logs FTP
@@ -99,11 +100,13 @@ src/
 │   │       ├── ScrapingPanel.tsx    # Panneau scraping
 │   │       └── ScrapingProgress.tsx # Stepper progression
 │   └── settings/
-│       └── components/      # 6 sections settings
+│       └── components/      # 8 sections settings
 │           ├── AutoOrganizeSection.tsx
 │           ├── BackupSection.tsx
+│           ├── BillingSection.tsx    # Onglet Facturation (v1.2.0)
 │           ├── FolderStructureSection.tsx
 │           ├── GeminiSection.tsx
+│           ├── IDEMonitoringSection.tsx
 │           ├── MacOSSettingsSection.tsx
 │           └── WorkspaceSection.tsx
 ├── services/                # 20 services metier
@@ -278,6 +281,38 @@ Icone dans la barre de menu macOS:
 
 ### 2. Gestion des Projets
 
+#### Import de Projet Existant (v1.1.0)
+
+Permet d'importer un dossier existant comme projet Forge:
+
+**Composants**:
+- `ImportProjectModal.tsx`: Modal en 2 etapes
+- `ImportAnalysis` type dans `types/index.ts`
+- `analyzeExistingFolder()` et `importProject()` dans `projectService.ts`
+
+**Fonctionnement**:
+1. **Etape 1 - Selection**: Choix du dossier via dialog natif
+2. **Analyse automatique**:
+   - Detection des dossiers Forge existants vs manquants
+   - Detection du dossier local (www, public, dist, build)
+   - Verification si le projet existe deja
+3. **Etape 2 - Configuration**:
+   - Resume: X dossiers existants, Y manquants
+   - Option "Creer les dossiers manquants" (cochee par defaut)
+   - Champs optionnels: nom client, URL site actuel
+
+**Cas geres**:
+| Cas | Comportement |
+|-----|--------------|
+| Projet deja importe | Erreur: "Ce projet existe deja" |
+| Dossier vide | OK - cree toute la structure |
+| Structure complete | OK - ne cree rien |
+| Structure partielle | OK - cree uniquement les manquants |
+
+**Interface**:
+- Bouton "Importer" a cote de "Nouveau" dans la liste des projets
+- Icone: `FolderInput` de lucide-react
+
 #### Structure de dossiers
 ```
 MonProjet/
@@ -344,35 +379,81 @@ MonProjet/
 - Tri automatique si confiance >= seuil
 - Configuration globale dans Settings
 
-### 6. Time Tracking (v1.1.0)
+### 6. Time Tracking & Billing (v1.2.0)
 
 #### Composants
 - `TimeTracker.tsx`: Widget complet avec timer, stats, controles
 - `TimeTrackerMini`: Version compacte pour le header
 - `TimeSessionsPanel`: Historique des sessions
 - `timeStore.ts`: Store Zustand avec persistance
+- `BillingSection.tsx`: Onglet Facturation dans les parametres
 
 #### Fonctionnalites
 - Timer start/stop par projet
 - Affichage en temps reel dans le header
 - Stats: aujourd'hui, cette semaine, total projet
-- Tarif horaire configurable (defaut: 75€/h)
-- Calcul automatique du montant facturable
+- **Systeme de facturation refait (v1.2.0)**:
+  - Taux global configurable dans Parametres > Facturation
+  - 3 unites de facturation: Heure, Demi-journee (4h), Journee (8h)
+  - Le taux est le **montant par unite** (ex: 450€/jour = 450€ pour 8h)
+  - Calcul proportionnel (4h sur 450€/jour = 225€)
+  - Override possible par projet
+  - Bouton "Reappliquer a tous les projets"
 - Historique complet des sessions
 - Persistance locale (localStorage via Zustand)
 
-#### Interface
+#### Logique de calcul
+
+```typescript
+// Formule: montant = (temps / duree_unite) * taux_par_unite
+const UNIT_SECONDS = {
+  hour: 3600,      // 1 heure
+  half_day: 14400, // 4 heures
+  day: 28800,      // 8 heures
+};
+
+// Exemples:
+// - 4h travaillees, taux 450€/jour → (14400/28800) * 450 = 225€
+// - 30min travaillees, taux 60€/h → (1800/3600) * 60 = 30€
 ```
-┌─────────────────────────────────────────┐
-│  TEMPS DE TRAVAIL                       │
-├─────────────────────────────────────────┤
-│  00:34:12  [Demarrer] / [Stop]          │
-│                                         │
-│  Aujourd'hui    Cette semaine    Total  │
-│     1h 20m         8h 45m       45h 20m │
-│                                         │
-│  Tarif: 75€/h  →  Facturable: 3 400€   │
-└─────────────────────────────────────────┘
+
+#### Cascade des taux
+```typescript
+const effectiveRate = project.billing?.hourlyRate
+  ?? settings.billing?.defaultRate
+  ?? 75; // Fallback
+
+const effectiveUnit = project.billing?.billingUnit
+  ?? settings.billing?.defaultUnit
+  ?? 'hour';
+```
+
+#### Interface Parametres > Facturation
+```
+┌─────────────────────────────────────────────┐
+│  PARAMETRES DE FACTURATION                  │
+├─────────────────────────────────────────────┤
+│  Taux par defaut: [450] €                   │
+│                                             │
+│  Unite de facturation:                      │
+│  ┌─────────┐ ┌───────────┐ ┌──────────┐    │
+│  │  Heure  │ │ Demi-jour │ │ Journee  │    │
+│  │  (1h)   │ │   (4h)    │ │   (8h)   │    │
+│  └─────────┘ └───────────┘ └──────────┘    │
+│                                             │
+│  Equivalences: 56.25€/h • 225€/½j           │
+│                                             │
+│  [Reappliquer a tous les projets (12)]      │
+└─────────────────────────────────────────────┘
+```
+
+#### Dashboard Stats (v1.2.0)
+Statistiques globales sur la page d'accueil:
+```
+┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+│  45h 20m │ │  3 400€  │ │    12    │ │    5     │
+│  Temps   │ │Facturable│ │ Actifs   │ │ Ce mois  │
+└──────────┘ └──────────┘ └──────────┘ └──────────┘
 ```
 
 ### 7. Sync Selective (v1.1.0)
@@ -631,7 +712,35 @@ npm run typecheck
 
 ## Historique des Versions
 
+### v1.2.0 (2026-01-27)
+- **Refonte complete du systeme de facturation**:
+  - Nouvel onglet "Facturation" dedie dans les parametres
+  - Taux global avec selection de l'unite (Heure / Demi-journee / Journee)
+  - Correction du calcul: le taux est le montant PAR UNITE (450€/jour = 450€ pour 8h)
+  - Calcul proportionnel du temps travaille
+  - Affichage des equivalences en temps reel
+  - Bouton "Reappliquer a tous les projets"
+  - Composant: `BillingSection.tsx` refait avec gros boutons clairs
+  - Type: `GlobalBillingSettings` dans `types/index.ts`
+  - Store: `billing` dans `settingsStore.ts`
+- **Dashboard Stats sur la page d'accueil**:
+  - Temps total travaille (tous projets)
+  - Montant facturable total
+  - Nombre de projets actifs
+  - Projets travailles ce mois
+  - Composant: integration dans `ProjectList.tsx`
+- **Cascade des taux**: projet > global > fallback (75€/h)
+- **Override par projet**: chaque projet peut definir son propre taux
+
 ### v1.1.0 (2026-01-26)
+- **Import Projet Existant**: Importer un dossier existant comme projet Forge
+  - Modal en 2 etapes: selection + configuration
+  - Analyse automatique de la structure (dossiers existants/manquants)
+  - Detection du dossier local (www, public, dist, build)
+  - Option de creation des dossiers manquants
+  - Composant: `ImportProjectModal.tsx`
+  - Type: `ImportAnalysis` dans `types/index.ts`
+  - Methodes: `analyzeExistingFolder()`, `importProject()` dans `projectService.ts`
 - **Time Tracking**: Timer par projet avec historique et facturation
   - Composants: `TimeTracker.tsx`, `TimeTrackerMini`, `TimeSessionsPanel`
   - Store: `timeStore.ts` avec persistance Zustand
@@ -643,6 +752,7 @@ npm run typecheck
   - PreviewLinkGenerator (outils avances)
   - PostSyncHooks (outils avances)
 - **UI amélioree**:
+  - Bouton "Importer" dans la liste des projets
   - TimeTrackerMini dans le header projet
   - 6 outils avances dans l'onglet FTP
   - Indicateur FTP compact dans les cartes projet (icone + "FTP")

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ArrowLeft, Save, Check } from 'lucide-react';
-import { Settings as SettingsType, AutoOrganizeSettings, Project } from '../types';
+import { ArrowLeft, Save, Check, DollarSign } from 'lucide-react';
+import { Settings as SettingsType, AutoOrganizeSettings, IDEMonitoringSettings, GlobalBillingSettings, Project } from '../types';
 import { Button, Tabs, treeToFlat } from './ui';
 import type { Tab } from './ui';
 import {
@@ -10,6 +10,8 @@ import {
   AutoOrganizeSection,
   MacOSSettingsSection,
   BackupSection,
+  IDEMonitoringSection,
+  BillingSection,
 } from '../features/settings/components';
 import { useSettingsStore } from '../stores';
 import { useFolderTree } from '../features/settings/hooks/useFolderTree';
@@ -19,6 +21,18 @@ const DEFAULT_AUTO_ORGANIZE: AutoOrganizeSettings = {
   enabled: false,
   autoMove: false,
   confidenceThreshold: 70,
+};
+
+const DEFAULT_IDE_MONITORING: IDEMonitoringSettings = {
+  enabled: false,
+  checkIntervalMs: 5000,
+  autoStopDelayMs: 10000,
+  preferredIDE: 'pycharm',
+};
+
+const DEFAULT_BILLING: GlobalBillingSettings = {
+  defaultRate: 75,
+  defaultUnit: 'hour',
 };
 
 interface SettingsPageProps {
@@ -46,6 +60,12 @@ export function SettingsPage({
   const [autoOrganize, setAutoOrganize] = useState<AutoOrganizeSettings>(
     settings.autoOrganize || DEFAULT_AUTO_ORGANIZE
   );
+  const [ideMonitoring, setIDEMonitoring] = useState<IDEMonitoringSettings>(
+    settings.ideMonitoring || DEFAULT_IDE_MONITORING
+  );
+  const [billing, setBilling] = useState<GlobalBillingSettings>(
+    settings.billing || DEFAULT_BILLING
+  );
   const [showMenuBarIcon, setShowMenuBarIcon] = useState(settings.showMenuBarIcon ?? true);
   const [saved, setSaved] = useState(false);
 
@@ -55,8 +75,10 @@ export function SettingsPage({
     setGeminiApiKey(settings.geminiApiKey || '');
     setGeminiModel(settings.geminiModel || '');
     setAutoOrganize(settings.autoOrganize || DEFAULT_AUTO_ORGANIZE);
+    setIDEMonitoring(settings.ideMonitoring || DEFAULT_IDE_MONITORING);
+    setBilling(settings.billing || DEFAULT_BILLING);
     setShowMenuBarIcon(settings.showMenuBarIcon ?? true);
-  }, [settings.workspacePath, settings.geminiApiKey, settings.geminiModel, settings.autoOrganize, settings.showMenuBarIcon]);
+  }, [settings.workspacePath, settings.geminiApiKey, settings.geminiModel, settings.autoOrganize, settings.ideMonitoring, settings.billing, settings.showMenuBarIcon]);
 
   // Auto-save callback for folder structure changes
   const handleFolderAutoSave = useCallback((flatStructure: string[]) => {
@@ -79,6 +101,14 @@ export function SettingsPage({
     setAutoOrganize((prev) => ({ ...prev, ...partial }));
   };
 
+  const handleIDEMonitoringChange = (partial: Partial<IDEMonitoringSettings>) => {
+    setIDEMonitoring((prev) => ({ ...prev, ...partial }));
+  };
+
+  const handleBillingChange = (partial: Partial<GlobalBillingSettings>) => {
+    setBilling((prev) => ({ ...prev, ...partial }));
+  };
+
   const handleSave = async () => {
     const folderStructure = treeToFlat(treeNodes);
     onUpdate({
@@ -87,6 +117,8 @@ export function SettingsPage({
       geminiModel: geminiModel || undefined,
       folderStructure,
       autoOrganize,
+      ideMonitoring,
+      billing,
       showMenuBarIcon,
     });
 
@@ -119,10 +151,38 @@ export function SettingsPage({
             hasGeminiKey={!!geminiApiKey}
             onChange={handleAutoOrganizeChange}
           />
+          <IDEMonitoringSection
+            settings={ideMonitoring}
+            onChange={handleIDEMonitoringChange}
+          />
           <MacOSSettingsSection
             showMenuBarIcon={showMenuBarIcon}
             onShowMenuBarIconChange={setShowMenuBarIcon}
           />
+        </div>
+      ),
+    },
+    {
+      id: 'billing',
+      label: 'Facturation',
+      content: (
+        <div className="settings-tab-content">
+          <div className="settings-section">
+            <h3 className="settings-section-title">
+              <DollarSign size={16} style={{ marginRight: 8 }} />
+              Parametres de facturation
+            </h3>
+            <p className="settings-hint" style={{ marginBottom: 20 }}>
+              Definissez le taux et l'unite de facturation par defaut pour tous vos projets.
+            </p>
+            <BillingSection
+              billing={billing}
+              onBillingChange={handleBillingChange}
+              projects={projects}
+              onProjectsRefresh={onProjectsRefresh}
+              onNotification={onNotification}
+            />
+          </div>
         </div>
       ),
     },

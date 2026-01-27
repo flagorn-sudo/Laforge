@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Settings, DEFAULT_FOLDER_STRUCTURE, AutoOrganizeSettings, FilterPreferences } from '../types';
+import { Settings, DEFAULT_FOLDER_STRUCTURE, AutoOrganizeSettings, FilterPreferences, IDEMonitoringSettings, GlobalBillingSettings, BillingUnit } from '../types';
 import { settingsService } from '../services/settingsService';
 
 // Debounce utility to prevent race conditions on rapid settings changes
@@ -30,9 +30,16 @@ interface SettingsState extends Settings {
   setGeminiModel: (model: string) => void;
   setFolderStructure: (structure: string[]) => void;
   setAutoOrganize: (settings: Partial<AutoOrganizeSettings>) => void;
+  setIDEMonitoring: (settings: Partial<IDEMonitoringSettings>) => void;
+  setBilling: (settings: Partial<GlobalBillingSettings>) => void;
   setViewMode: (mode: 'grid' | 'list') => void;
   resetToDefaults: () => void;
   markSaved: () => void;
+
+  // Project Registry Actions
+  registerProject: (path: string) => void;
+  unregisterProject: (path: string) => void;
+  setRegisteredProjects: (paths: string[]) => void;
 
   // Hydration
   loadSettings: () => Promise<void>;
@@ -52,8 +59,21 @@ const DEFAULT_FILTER_PREFERENCES: FilterPreferences = {
   sortBy: 'name',
 };
 
+const DEFAULT_IDE_MONITORING: IDEMonitoringSettings = {
+  enabled: false,
+  checkIntervalMs: 5000,
+  autoStopDelayMs: 10000,
+  preferredIDE: 'pycharm',
+};
+
+const DEFAULT_BILLING: GlobalBillingSettings = {
+  defaultRate: 75,
+  defaultUnit: 'hour' as BillingUnit,
+};
+
 const DEFAULT_SETTINGS: Settings = {
   workspacePath: '',
+  registeredProjects: [],
   geminiApiKey: '',
   geminiModel: '',
   folderStructure: DEFAULT_FOLDER_STRUCTURE,
@@ -61,6 +81,8 @@ const DEFAULT_SETTINGS: Settings = {
   showMenuBarIcon: true,
   viewMode: 'grid',
   filterPreferences: DEFAULT_FILTER_PREFERENCES,
+  ideMonitoring: DEFAULT_IDE_MONITORING,
+  billing: DEFAULT_BILLING,
 };
 
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
@@ -110,8 +132,64 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     debouncedSave();
   },
 
+  setIDEMonitoring: (settings) => {
+    set((state) => ({
+      ideMonitoring: {
+        ...DEFAULT_IDE_MONITORING,
+        ...state.ideMonitoring,
+        ...settings,
+      },
+      hasChanges: true,
+    }));
+    debouncedSave();
+  },
+
+  setBilling: (settings) => {
+    set((state) => ({
+      billing: {
+        ...DEFAULT_BILLING,
+        ...state.billing,
+        ...settings,
+      },
+      hasChanges: true,
+    }));
+    debouncedSave();
+  },
+
   setViewMode: (mode) => {
     set({ viewMode: mode, hasChanges: true });
+    debouncedSave();
+  },
+
+  // Project Registry Actions
+  registerProject: (path: string) => {
+    set((state) => {
+      const currentPaths = state.registeredProjects || [];
+      // Avoid duplicates
+      if (currentPaths.includes(path)) {
+        return state;
+      }
+      return {
+        registeredProjects: [...currentPaths, path].sort(),
+        hasChanges: true,
+      };
+    });
+    debouncedSave();
+  },
+
+  unregisterProject: (path: string) => {
+    set((state) => {
+      const currentPaths = state.registeredProjects || [];
+      return {
+        registeredProjects: currentPaths.filter((p) => p !== path),
+        hasChanges: true,
+      };
+    });
+    debouncedSave();
+  },
+
+  setRegisteredProjects: (paths: string[]) => {
+    set({ registeredProjects: paths, hasChanges: true });
     debouncedSave();
   },
 
@@ -141,6 +219,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     const state = get();
     const settings: Settings = {
       workspacePath: state.workspacePath,
+      registeredProjects: state.registeredProjects,
       geminiApiKey: state.geminiApiKey,
       geminiModel: state.geminiModel,
       folderStructure: state.folderStructure,
@@ -148,6 +227,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       showMenuBarIcon: state.showMenuBarIcon,
       viewMode: state.viewMode,
       filterPreferences: state.filterPreferences,
+      ideMonitoring: state.ideMonitoring,
+      billing: state.billing,
     };
     try {
       await settingsService.saveSettings(settings);
@@ -161,6 +242,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     const state = get();
     const settings: Settings = {
       workspacePath: state.workspacePath,
+      registeredProjects: state.registeredProjects,
       geminiApiKey: state.geminiApiKey,
       geminiModel: state.geminiModel,
       folderStructure: state.folderStructure,
@@ -168,6 +250,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       showMenuBarIcon: state.showMenuBarIcon,
       viewMode: state.viewMode,
       filterPreferences: state.filterPreferences,
+      ideMonitoring: state.ideMonitoring,
+      billing: state.billing,
     };
     try {
       console.log('[settingsStore] Force saving settings immediately...');

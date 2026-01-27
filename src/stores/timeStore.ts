@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { ProjectBilling, BillingUnit } from '../types';
 
 export interface TimeSession {
   id: string;
@@ -41,6 +42,7 @@ interface TimeState {
   pauseSession: () => void;
   resumeSession: () => void;
   deleteSession: (sessionId: string) => void;
+  addManualSession: (projectId: string, hours: number, minutes: number, notes?: string) => TimeSession;
   setHourlyRate: (rate: number) => void;
 
   // Queries
@@ -152,6 +154,27 @@ export const useTimeStore = create<TimeState>()(
         set((state) => ({
           sessions: state.sessions.filter((s) => s.id !== sessionId),
         }));
+      },
+
+      addManualSession: (projectId: string, hours: number, minutes: number, notes?: string) => {
+        const duration = (hours * 3600) + (minutes * 60);
+        const endTime = new Date();
+        const startTime = new Date(endTime.getTime() - duration * 1000);
+
+        const session: TimeSession = {
+          id: generateId(),
+          projectId,
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+          duration,
+          notes: notes || 'Ajout manuel',
+        };
+
+        set((state) => ({
+          sessions: [...state.sessions, session],
+        }));
+
+        return session;
       },
 
       setHourlyRate: (rate: number) => {
@@ -284,4 +307,97 @@ export function formatDurationShort(seconds: number): string {
 
 export function calculateBillable(seconds: number, hourlyRate: number): number {
   return (seconds / 3600) * hourlyRate;
+}
+
+/**
+ * Calculate billable amount for a project with specific billing settings
+ *
+ * IMPORTANT: Le taux (rate) est le MONTANT PAR UNITÉ, pas un taux horaire à multiplier.
+ * - Si rate = 450€/jour → 8h de travail = 450€ (pas 450*8)
+ * - Si rate = 60€/heure → 1h de travail = 60€
+ * - Le calcul est proportionnel: 4h sur un taux de 450€/jour = 225€
+ *
+ * @param seconds - Total seconds worked
+ * @param projectBilling - Project-specific billing settings (optional)
+ * @param globalRate - Global rate as fallback (interpreted based on globalUnit)
+ * @param globalUnit - Global billing unit (default: 'hour')
+ * @returns Object with billable amount, billed units, and unit label
+ */
+export function calculateBillableForProject(
+  seconds: number,
+  projectBilling: ProjectBilling | undefined,
+  globalRate: number,
+  globalUnit: BillingUnit = 'hour'
+): {
+  amount: number;
+  billedUnits: number;
+  unitLabel: string;
+  billingUnit: BillingUnit;
+} {
+  // Determine effective rate and unit (project overrides global)
+  const rate = projectBilling?.hourlyRate ?? globalRate;
+  const billingUnit = projectBilling?.billingUnit ?? globalUnit;
+  const minimumMinutes = projectBilling?.minimumBillableMinutes ?? 0;
+
+  // If no time tracked, return zeros (don't apply minimum)
+  if (seconds === 0) {
+    let unitLabel: string;
+    switch (billingUnit) {
+      case 'minute': unitLabel = 'minutes'; break;
+      case 'hour': unitLabel = 'heures'; break;
+      case 'half_day': unitLabel = 'demi-journées'; break;
+      case 'day': unitLabel = 'journées'; break;
+      default: unitLabel = 'heures';
+    }
+    return { amount: 0, billedUnits: 0, unitLabel, billingUnit };
+  }
+
+  // Apply minimum billable time only if we have tracked time
+  const effectiveSeconds = Math.max(seconds, minimumMinutes * 60);
+
+  // Seconds per unit for proportional calculation
+  const secondsPerUnit: Record<BillingUnit, number> = {
+    minute: 60,
+    hour: 3600,
+    half_day: 14400,  // 4 hours
+    day: 28800,       // 8 hours
+  };
+
+  const unitSeconds = secondsPerUnit[billingUnit] || 3600;
+
+  // Calculate proportional units (decimal, e.g., 0.56 days)
+  const fractionOfUnit = effectiveSeconds / unitSeconds;
+
+  // Amount = fraction of unit × rate per unit
+  // Ex: 4h on 450€/day rate = (4*3600 / 28800) * 450 = 0.5 * 450 = 225€
+  const amount = fractionOfUnit * rate;
+
+  // Billed units for display (rounded to 2 decimals)
+  const billedUnits = Math.round(fractionOfUnit * 100) / 100;
+
+  // Unit label
+  let unitLabel: string;
+  switch (billingUnit) {
+    case 'minute':
+      unitLabel = billedUnits === 1 ? 'minute' : 'minutes';
+      break;
+    case 'hour':
+      unitLabel = billedUnits === 1 ? 'heure' : 'heures';
+      break;
+    case 'half_day':
+      unitLabel = billedUnits === 1 ? 'demi-journée' : 'demi-journées';
+      break;
+    case 'day':
+      unitLabel = billedUnits === 1 ? 'journée' : 'journées';
+      break;
+    default:
+      unitLabel = 'heures';
+  }
+
+  return {
+    amount,
+    billedUnits,
+    unitLabel,
+    billingUnit,
+  };
 }
