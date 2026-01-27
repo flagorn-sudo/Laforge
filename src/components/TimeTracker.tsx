@@ -14,6 +14,7 @@ import './TimeTracker.css';
 const DEFAULT_GLOBAL_BILLING: GlobalBillingSettings = {
   defaultRate: 75,
   defaultUnit: 'hour' as BillingUnit,
+  defaultCurrency: 'EUR' as const,
 };
 
 interface TimeTrackerProps {

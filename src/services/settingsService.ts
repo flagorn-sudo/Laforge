@@ -4,7 +4,7 @@
  */
 
 import { Store } from 'tauri-plugin-store-api';
-import { Settings, AutoOrganizeSettings, DEFAULT_FOLDER_STRUCTURE } from '../types';
+import { Settings, AutoOrganizeSettings, GlobalBillingSettings, IDEMonitoringSettings, FilterPreferences, DEFAULT_FOLDER_STRUCTURE, BillingUnit, Currency } from '../types';
 
 const SETTINGS_STORE = 'app-settings.json';
 const SETTINGS_KEY = 'settings';
@@ -36,13 +36,37 @@ const DEFAULT_AUTO_ORGANIZE: AutoOrganizeSettings = {
   confidenceThreshold: 70,
 };
 
+const DEFAULT_BILLING: GlobalBillingSettings = {
+  defaultRate: 75,
+  defaultUnit: 'hour' as BillingUnit,
+  defaultCurrency: 'EUR' as Currency,
+};
+
+const DEFAULT_IDE_MONITORING: IDEMonitoringSettings = {
+  enabled: false,
+  checkIntervalMs: 5000,
+  autoStopDelayMs: 10000,
+  preferredIDE: 'pycharm',
+};
+
+const DEFAULT_FILTER_PREFERENCES: FilterPreferences = {
+  filterBarOpen: false,
+  statusFilters: [],
+  sortBy: 'name',
+};
+
 const DEFAULT_SETTINGS: Settings = {
   workspacePath: '',
+  registeredProjects: [],
   geminiApiKey: '',
   geminiModel: '',
   folderStructure: DEFAULT_FOLDER_STRUCTURE,
   autoOrganize: DEFAULT_AUTO_ORGANIZE,
   showMenuBarIcon: true,
+  viewMode: 'grid',
+  filterPreferences: DEFAULT_FILTER_PREFERENCES,
+  ideMonitoring: DEFAULT_IDE_MONITORING,
+  billing: DEFAULT_BILLING,
 };
 
 export const settingsService = {
@@ -76,9 +100,22 @@ export const settingsService = {
         return {
           ...DEFAULT_SETTINGS,
           ...settings,
+          registeredProjects: settings.registeredProjects || [],
           autoOrganize: {
             ...DEFAULT_AUTO_ORGANIZE,
             ...settings.autoOrganize,
+          },
+          billing: {
+            ...DEFAULT_BILLING,
+            ...settings.billing,
+          },
+          ideMonitoring: {
+            ...DEFAULT_IDE_MONITORING,
+            ...settings.ideMonitoring,
+          },
+          filterPreferences: {
+            ...DEFAULT_FILTER_PREFERENCES,
+            ...settings.filterPreferences,
           },
         };
       }
@@ -105,6 +142,7 @@ export const settingsService = {
           console.log('[settingsService] Found old settings in localStorage:', state.workspacePath);
           return {
             workspacePath: state.workspacePath || '',
+            registeredProjects: state.registeredProjects || [],
             geminiApiKey: state.geminiApiKey || '',
             geminiModel: state.geminiModel || '',
             folderStructure: state.folderStructure || DEFAULT_FOLDER_STRUCTURE,

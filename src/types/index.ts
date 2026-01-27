@@ -152,9 +152,20 @@ export interface IDEMonitoringSettings {
 // Global Billing Settings
 // ============================================
 
+export type Currency = 'EUR' | 'USD' | 'GBP' | 'CHF' | 'CAD';
+
+export const CURRENCY_CONFIG: Record<Currency, { symbol: string; label: string }> = {
+  EUR: { symbol: '€', label: 'Euro (€)' },
+  USD: { symbol: '$', label: 'Dollar US ($)' },
+  GBP: { symbol: '£', label: 'Livre Sterling (£)' },
+  CHF: { symbol: 'CHF', label: 'Franc Suisse (CHF)' },
+  CAD: { symbol: 'CA$', label: 'Dollar Canadien (CA$)' },
+};
+
 export interface GlobalBillingSettings {
   defaultRate: number;        // Taux par défaut (ex: 450 pour 450€/jour)
   defaultUnit: BillingUnit;   // 'hour' | 'half_day' | 'day'
+  defaultCurrency: Currency;  // Devise par défaut
 }
 
 export interface Settings {

@@ -435,6 +435,10 @@ const effectiveUnit = project.billing?.billingUnit
 ├─────────────────────────────────────────────┤
 │  Taux par defaut: [450] €                   │
 │                                             │
+│  Devise:                                    │
+│  [€] [$] [£] [CHF] [CA$]                    │
+│  EUR  USD  GBP  CHF  CAD                    │
+│                                             │
 │  Unite de facturation:                      │
 │  ┌─────────┐ ┌───────────┐ ┌──────────┐    │
 │  │  Heure  │ │ Demi-jour │ │ Journee  │    │
@@ -447,14 +451,26 @@ const effectiveUnit = project.billing?.billingUnit
 └─────────────────────────────────────────────┘
 ```
 
+#### Devises supportees
+| Code | Symbole | Libelle |
+|------|---------|---------|
+| EUR | € | Euro |
+| USD | $ | Dollar US |
+| GBP | £ | Livre Sterling |
+| CHF | CHF | Franc Suisse |
+| CAD | CA$ | Dollar Canadien |
+
 #### Dashboard Stats (v1.2.0)
-Statistiques globales sur la page d'accueil:
+Statistiques globales compactes sur la page d'accueil (icones a gauche):
 ```
-┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
-│  45h 20m │ │  3 400€  │ │    12    │ │    5     │
-│  Temps   │ │Facturable│ │ Actifs   │ │ Ce mois  │
-└──────────┘ └──────────┘ └──────────┘ └──────────┘
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│ ⏱  45h 20m     │ │ 💰 3 400€      │ │ 📁 12          │ │ 📈 5           │
+│    Temps total  │ │    Facturable   │ │    Actifs       │ │    Ce mois      │
+└─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
+- Layout compact: icone a gauche, donnees a droite
+- Hauteur reduite pour economiser l'espace vertical
+- 4 stats: temps total, montant facturable, projets actifs, projets ce mois
 
 ### 7. Sync Selective (v1.1.0)
 
@@ -716,14 +732,16 @@ npm run typecheck
 - **Refonte complete du systeme de facturation**:
   - Nouvel onglet "Facturation" dedie dans les parametres
   - Taux global avec selection de l'unite (Heure / Demi-journee / Journee)
+  - **Selection de la devise**: EUR, USD, GBP, CHF, CAD
   - Correction du calcul: le taux est le montant PAR UNITE (450€/jour = 450€ pour 8h)
   - Calcul proportionnel du temps travaille
   - Affichage des equivalences en temps reel
-  - Bouton "Reappliquer a tous les projets"
+  - Bouton "Reappliquer a tous les projets" (inclut la devise)
   - Composant: `BillingSection.tsx` refait avec gros boutons clairs
-  - Type: `GlobalBillingSettings` dans `types/index.ts`
+  - Types: `GlobalBillingSettings`, `Currency`, `CURRENCY_CONFIG` dans `types/index.ts`
   - Store: `billing` dans `settingsStore.ts`
-- **Dashboard Stats sur la page d'accueil**:
+- **Dashboard Stats compact sur la page d'accueil**:
+  - Layout horizontal avec icone a gauche des donnees
   - Temps total travaille (tous projets)
   - Montant facturable total
   - Nombre de projets actifs

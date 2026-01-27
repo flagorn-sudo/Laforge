@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Settings, DEFAULT_FOLDER_STRUCTURE, AutoOrganizeSettings, FilterPreferences, IDEMonitoringSettings, GlobalBillingSettings, BillingUnit } from '../types';
+import { Settings, DEFAULT_FOLDER_STRUCTURE, AutoOrganizeSettings, FilterPreferences, IDEMonitoringSettings, GlobalBillingSettings, BillingUnit, Currency } from '../types';
 import { settingsService } from '../services/settingsService';
 
 // Debounce utility to prevent race conditions on rapid settings changes
@@ -69,6 +69,7 @@ const DEFAULT_IDE_MONITORING: IDEMonitoringSettings = {
 const DEFAULT_BILLING: GlobalBillingSettings = {
   defaultRate: 75,
   defaultUnit: 'hour' as BillingUnit,
+  defaultCurrency: 'EUR' as Currency,
 };
 
 const DEFAULT_SETTINGS: Settings = {

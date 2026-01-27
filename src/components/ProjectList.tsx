@@ -42,6 +42,7 @@ export function ProjectList({
   const globalBilling: GlobalBillingSettings = useSettingsStore((state) => state.billing) || {
     defaultRate: 75,
     defaultUnit: 'hour' as BillingUnit,
+    defaultCurrency: 'EUR' as const,
   };
 
   // Calculate global stats
@@ -150,7 +151,7 @@ export function ProjectList({
         <div className="dashboard-stats">
           <div className="stat-card">
             <div className="stat-icon time">
-              <Clock size={20} />
+              <Clock size={16} />
             </div>
             <div className="stat-content">
               <span className="stat-value">{formatDurationShort(globalStats.totalSeconds)}</span>
@@ -159,7 +160,7 @@ export function ProjectList({
           </div>
           <div className="stat-card highlight">
             <div className="stat-icon money">
-              <DollarSign size={20} />
+              <DollarSign size={16} />
             </div>
             <div className="stat-content">
               <span className="stat-value">{globalStats.totalAmount.toFixed(0)}€</span>
@@ -168,7 +169,7 @@ export function ProjectList({
           </div>
           <div className="stat-card">
             <div className="stat-icon projects">
-              <Briefcase size={20} />
+              <Briefcase size={16} />
             </div>
             <div className="stat-content">
               <span className="stat-value">{globalStats.activeProjects}</span>
@@ -177,7 +178,7 @@ export function ProjectList({
           </div>
           <div className="stat-card">
             <div className="stat-icon activity">
-              <TrendingUp size={20} />
+              <TrendingUp size={16} />
             </div>
             <div className="stat-content">
               <span className="stat-value">{globalStats.projectsWorkedThisMonth}</span>

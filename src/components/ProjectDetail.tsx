@@ -236,6 +236,7 @@ export function ProjectDetail({
   const globalBilling: GlobalBillingSettings = useSettingsStore((state) => state.billing) || {
     defaultRate: 75,
     defaultUnit: 'hour' as BillingUnit,
+    defaultCurrency: 'EUR' as const,
   };
 
   const {

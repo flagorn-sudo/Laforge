@@ -134,13 +134,14 @@ src/
 - **Système de facturation refait (v1.2.0)**:
   - Onglet dédié "Facturation" dans les paramètres
   - Taux global avec unité (Heure / Demi-journée / Journée)
+  - **Sélection de la devise**: EUR, USD, GBP, CHF, CAD
   - Le taux est le **montant PAR UNITÉ** (450€/jour = 450€ pour 8h)
   - Calcul proportionnel du temps travaillé
   - Affichage des équivalences en temps réel
-  - Bouton "Réappliquer à tous les projets"
+  - Bouton "Réappliquer à tous les projets" (inclut la devise)
   - Override par projet possible
 - Cascade des taux: projet > global > fallback (75€/h)
-- Dashboard stats sur la page d'accueil:
+- Dashboard stats compact sur la page d'accueil (icônes à gauche):
   - Temps total travaillé
   - Montant facturable total
   - Projets actifs et projets travaillés ce mois
@@ -268,8 +269,11 @@ export interface ProjectBilling { ... }
 export interface GlobalBillingSettings {   // v1.2.0
   defaultRate: number;
   defaultUnit: BillingUnit;
+  defaultCurrency: Currency;
 }
 export type BillingUnit = 'minute' | 'hour' | 'half_day' | 'day';
+export type Currency = 'EUR' | 'USD' | 'GBP' | 'CHF' | 'CAD';
+export const CURRENCY_CONFIG: Record<Currency, { symbol: string; label: string }>;
 export interface SyncRules { ... }
 export interface SyncProgressEvent { ... }
 export interface TimeSession { ... }
@@ -476,4 +480,4 @@ Ces composants sont autonomes et peuvent être importés directement:
 ---
 
 *Document mis à jour le 2026-01-27 pour La Forge v1.2.0*
-*Inclut les modifications du système de facturation et dashboard stats*
+*Inclut les modifications du système de facturation (devises, calcul), dashboard stats compact*

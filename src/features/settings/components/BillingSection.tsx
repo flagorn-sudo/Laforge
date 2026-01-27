@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DollarSign, Clock, Sun, Calendar, RefreshCw, Loader } from 'lucide-react';
-import { BillingUnit, GlobalBillingSettings, Project } from '../../../types';
+import { BillingUnit, GlobalBillingSettings, Project, Currency, CURRENCY_CONFIG } from '../../../types';
 import { projectService } from '../../../services/projectService';
 
 interface BillingSectionProps {
@@ -41,9 +41,10 @@ export function BillingSection({
   onProjectsRefresh,
   onNotification,
 }: BillingSectionProps) {
-  const { defaultRate, defaultUnit } = billing;
+  const { defaultRate, defaultUnit, defaultCurrency = 'EUR' } = billing;
   const equivalences = calculateEquivalences(defaultRate, defaultUnit);
   const [applyingToAll, setApplyingToAll] = useState(false);
+  const currencySymbol = CURRENCY_CONFIG[defaultCurrency]?.symbol || '€';
 
   const handleRateChange = (value: string) => {
     const numValue = parseFloat(value);
@@ -54,6 +55,10 @@ export function BillingSection({
 
   const handleUnitChange = (unit: BillingUnit) => {
     onBillingChange({ defaultUnit: unit });
+  };
+
+  const handleCurrencyChange = (currency: Currency) => {
+    onBillingChange({ defaultCurrency: currency });
   };
 
   const handleApplyToAllProjects = async () => {
@@ -69,7 +74,7 @@ export function BillingSection({
             hourlyRate: defaultRate,
             billingUnit: defaultUnit,
             minimumBillableMinutes: project.billing?.minimumBillableMinutes,
-            currency: 'EUR',
+            currency: defaultCurrency,
           },
           updated: new Date().toISOString(),
         };
@@ -90,13 +95,13 @@ export function BillingSection({
   const getEquivalenceText = () => {
     const parts: string[] = [];
     if (defaultUnit !== 'hour') {
-      parts.push(`${equivalences.hourly.toFixed(2)}€/h`);
+      parts.push(`${equivalences.hourly.toFixed(2)}${currencySymbol}/h`);
     }
     if (defaultUnit !== 'half_day') {
-      parts.push(`${equivalences.halfDay.toFixed(2)}€/½j`);
+      parts.push(`${equivalences.halfDay.toFixed(2)}${currencySymbol}/½j`);
     }
     if (defaultUnit !== 'day') {
-      parts.push(`${equivalences.daily.toFixed(2)}€/j`);
+      parts.push(`${equivalences.daily.toFixed(2)}${currencySymbol}/j`);
     }
     return parts.join('  •  ');
   };
@@ -115,7 +120,29 @@ export function BillingSection({
             step="5"
             className="billing-rate-field"
           />
-          <span className="billing-currency">€</span>
+          <span className="billing-currency">{currencySymbol}</span>
+        </div>
+      </div>
+
+      {/* Currency Selection */}
+      <div className="billing-currency-section">
+        <label className="billing-label">Devise</label>
+        <div className="billing-currency-grid">
+          {(Object.keys(CURRENCY_CONFIG) as Currency[]).map((currency) => {
+            const config = CURRENCY_CONFIG[currency];
+            const isSelected = defaultCurrency === currency;
+
+            return (
+              <button
+                key={currency}
+                onClick={() => handleCurrencyChange(currency)}
+                className={`billing-currency-btn ${isSelected ? 'selected' : ''}`}
+              >
+                <span className="currency-symbol">{config.symbol}</span>
+                <span className="currency-code">{currency}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -159,11 +186,11 @@ export function BillingSection({
             <>
               <div className="example-row">
                 <span>4h de travail</span>
-                <span className="example-amount">{(defaultRate * 0.5).toFixed(2)}€</span>
+                <span className="example-amount">{(defaultRate * 0.5).toFixed(2)}{currencySymbol}</span>
               </div>
               <div className="example-row">
                 <span>8h (1 journee)</span>
-                <span className="example-amount">{defaultRate.toFixed(2)}€</span>
+                <span className="example-amount">{defaultRate.toFixed(2)}{currencySymbol}</span>
               </div>
             </>
           )}
@@ -171,11 +198,11 @@ export function BillingSection({
             <>
               <div className="example-row">
                 <span>2h de travail</span>
-                <span className="example-amount">{(defaultRate * 0.5).toFixed(2)}€</span>
+                <span className="example-amount">{(defaultRate * 0.5).toFixed(2)}{currencySymbol}</span>
               </div>
               <div className="example-row">
                 <span>4h (1 demi-journee)</span>
-                <span className="example-amount">{defaultRate.toFixed(2)}€</span>
+                <span className="example-amount">{defaultRate.toFixed(2)}{currencySymbol}</span>
               </div>
             </>
           )}
@@ -183,11 +210,11 @@ export function BillingSection({
             <>
               <div className="example-row">
                 <span>30 min de travail</span>
-                <span className="example-amount">{(defaultRate * 0.5).toFixed(2)}€</span>
+                <span className="example-amount">{(defaultRate * 0.5).toFixed(2)}{currencySymbol}</span>
               </div>
               <div className="example-row">
                 <span>1h de travail</span>
-                <span className="example-amount">{defaultRate.toFixed(2)}€</span>
+                <span className="example-amount">{defaultRate.toFixed(2)}{currencySymbol}</span>
               </div>
             </>
           )}
