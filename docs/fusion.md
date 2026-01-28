@@ -374,7 +374,62 @@ src/
 // 4. Sauvegarde dans settings.registeredProjects
 ```
 
-### 2.10 Outils Additionnels
+### 2.10 System Tray Integration (v1.2.1)
+
+**Priorité**: Moyenne
+
+**Fichiers sources**:
+```
+src-tauri/src/
+└── tray.rs              # Menu tray + handlers events
+
+src/
+├── hooks/
+│   └── useSystemTray.ts # Hook React pour events tray
+└── App.tsx              # Intégration avec timeStore
+```
+
+**Fonctionnalités**:
+- Menu tray avec 7 projets récents
+- **Sous-menu par projet** avec:
+  - Contrôles timer (v1.2.1):
+    - ▶️ Démarrer le timer (si pas de timer actif)
+    - ⏸️ Mettre en pause (si timer actif et en cours)
+    - ▶️ Reprendre le timer (si timer en pause)
+    - ⏹️ Arrêter le timer (si timer actif)
+  - 📁 Ouvrir le dossier
+  - 🔄 Synchroniser FTP (si FTP configuré)
+- Indicateur de sync en cours
+- Mise à jour dynamique du menu selon l'état du timer
+
+**Communication bidirectionnelle**:
+```typescript
+// Frontend → Backend: updateRecentProjects avec timerStates
+const timerStates = projects.map(p => ({
+  projectId: p.id,
+  isActive: activeSessions.some(s => s.projectId === p.id),
+  isPaused: activeSessions.find(s => s.projectId === p.id)?.isPaused ?? false,
+}));
+updateRecentProjects(projects, timerStates);
+
+// Backend → Frontend: events Tauri
+// tray:timer-start, tray:timer-pause, tray:timer-resume, tray:timer-stop
+```
+
+**Types Rust (RecentProject)**:
+```rust
+pub struct RecentProject {
+    pub id: String,
+    pub name: String,
+    pub client: Option<String>,
+    pub path: String,
+    pub has_ftp: bool,
+    pub has_active_timer: bool,  // v1.2.1
+    pub is_timer_paused: bool,   // v1.2.1
+}
+```
+
+### 2.11 Outils Additionnels
 
 **Priorité**: Basse
 
@@ -1090,7 +1145,8 @@ Cette section détaille la structure visuelle de La Forge pour assurer une mise 
 
 ---
 
-*Document mis à jour le 2026-01-28 pour La Forge v1.2.3*
+*Document mis à jour le 2026-01-28 pour La Forge v1.2.4*
 *Inclut: IDE monitoring, import/missing projects, guide UI complet, agencement des données*
+*v1.2.1: Contrôles timer dans le System Tray (démarrer/pause/reprendre/arrêter)*
 *v1.2.2: Timers multiples simultanés, fonction pause/stop séparée*
 *v1.2.3: Layout fixe ProjectCard (zones gauche/timer/droite), indicateurs icônes seules*

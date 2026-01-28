@@ -1,6 +1,6 @@
-# Notes Techniques - La Forge v1.2.0
+# Notes Techniques - La Forge v1.2.1
 
-## Derniere mise a jour: 2026-01-27
+## Derniere mise a jour: 2026-01-28
 
 ---
 
@@ -274,9 +274,14 @@ Menu natif en francais avec raccourcis:
 
 #### System Tray
 Icone dans la barre de menu macOS:
-- 7 projets recents
-- Ouvrir dans Finder
-- Synchroniser FTP
+- 7 projets recents avec sous-menu contextuel:
+  - **Controles Timer** (v1.2.1):
+    - ▶️ Demarrer le timer (si pas de timer actif)
+    - ⏸️ Mettre en pause (si timer actif et en cours)
+    - ▶️ Reprendre le timer (si timer en pause)
+    - ⏹️ Arreter le timer (si timer actif)
+  - 📁 Ouvrir le dossier
+  - 🔄 Synchroniser FTP (si FTP configure)
 - Indicateur de sync en cours
 
 ### 2. Gestion des Projets
@@ -749,6 +754,17 @@ npm run tauri build && pkill -f "La Forge" 2>/dev/null || true && sleep 1 && rm 
 ---
 
 ## Historique des Versions
+
+### v1.2.1 (2026-01-28)
+- **Controles Timer dans le System Tray**:
+  - Demarrer/Arreter le timer directement depuis le menu tray
+  - Mettre en pause / Reprendre le timer
+  - Mise a jour dynamique du menu selon l'etat du timer
+  - Communication bidirectionnelle tray <-> frontend via events Tauri
+  - Fichiers modifies:
+    - `src-tauri/src/tray.rs`: ajout des items menu timer et handlers
+    - `src/hooks/useSystemTray.ts`: nouveaux events timer (start/pause/resume/stop)
+    - `src/App.tsx`: integration avec timeStore
 
 ### v1.2.0 (2026-01-27)
 - **Refonte complete du systeme de facturation**:

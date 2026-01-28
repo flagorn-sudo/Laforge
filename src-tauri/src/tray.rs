@@ -37,6 +37,32 @@ fn create_tray_menu(recent_projects: Vec<RecentProject>) -> SystemTrayMenu {
             // Create submenu for each project
             let mut submenu = SystemTrayMenu::new();
 
+            // Timer controls - based on timer state
+            if project.has_active_timer {
+                if project.is_timer_paused {
+                    // Timer is paused - show resume option
+                    submenu = submenu.add_item(
+                        CustomMenuItem::new(format!("timer-resume:{}", project.id), "▶️ Reprendre le timer")
+                    );
+                } else {
+                    // Timer is running - show pause option
+                    submenu = submenu.add_item(
+                        CustomMenuItem::new(format!("timer-pause:{}", project.id), "⏸️ Mettre en pause")
+                    );
+                }
+                // Stop option always available when timer is active
+                submenu = submenu.add_item(
+                    CustomMenuItem::new(format!("timer-stop:{}", project.id), "⏹️ Arrêter le timer")
+                );
+            } else {
+                // No active timer - show start option
+                submenu = submenu.add_item(
+                    CustomMenuItem::new(format!("timer-start:{}", project.id), "▶️ Démarrer le timer")
+                );
+            }
+
+            submenu = submenu.add_native_item(SystemTrayMenuItem::Separator);
+
             // Open in Finder - always available
             submenu = submenu.add_item(
                 CustomMenuItem::new(format!("finder:{}", project.id), "📁 Ouvrir le dossier")
@@ -88,6 +114,26 @@ pub fn handle_tray_event(app: &AppHandle, event: SystemTrayEvent) {
                     // Graceful shutdown - allows cleanup of threads and resources
                     app.exit(0);
                 }
+                id if id.starts_with("timer-start:") => {
+                    // Extract project ID and emit timer start event
+                    let project_id = id.strip_prefix("timer-start:").unwrap_or("");
+                    let _ = app.emit_all("tray:timer-start", project_id);
+                }
+                id if id.starts_with("timer-pause:") => {
+                    // Extract project ID and emit timer pause event
+                    let project_id = id.strip_prefix("timer-pause:").unwrap_or("");
+                    let _ = app.emit_all("tray:timer-pause", project_id);
+                }
+                id if id.starts_with("timer-resume:") => {
+                    // Extract project ID and emit timer resume event
+                    let project_id = id.strip_prefix("timer-resume:").unwrap_or("");
+                    let _ = app.emit_all("tray:timer-resume", project_id);
+                }
+                id if id.starts_with("timer-stop:") => {
+                    // Extract project ID and emit timer stop event
+                    let project_id = id.strip_prefix("timer-stop:").unwrap_or("");
+                    let _ = app.emit_all("tray:timer-stop", project_id);
+                }
                 id if id.starts_with("finder:") => {
                     // Extract project ID and emit open finder event
                     let project_id = id.strip_prefix("finder:").unwrap_or("");
@@ -120,6 +166,10 @@ pub struct RecentProject {
     pub path: String,
     #[serde(rename = "hasFtp")]
     pub has_ftp: bool,
+    #[serde(rename = "hasActiveTimer")]
+    pub has_active_timer: bool,
+    #[serde(rename = "isTimerPaused")]
+    pub is_timer_paused: bool,
 }
 
 /// Update the tray menu with recent projects

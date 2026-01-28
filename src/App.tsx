@@ -8,7 +8,7 @@ import { ImportProjectModal } from './components/ImportProjectModal';
 import { Notifications } from './components/Notifications';
 import { AboutModal } from './components/AboutModal';
 import { ProjectFormData } from './components/ProjectForm';
-import { useProjectStore, useSettingsStore, useUIStore, useScheduleStore } from './stores';
+import { useProjectStore, useSettingsStore, useUIStore, useScheduleStore, useTimeStore } from './stores';
 import { useMenuEvents, useFileWatcher, useSystemTray } from './hooks';
 import { syncService } from './services/syncService';
 import { projectService } from './services/projectService';
@@ -159,13 +159,38 @@ export function App() {
   // Activate file watcher based on settings
   useFileWatcher();
 
-  // System tray integration - show recent projects with Finder/Sync options
-  const { updateRecentProjects, onOpenFinder, onSyncProject } = useSystemTray();
+  // System tray integration - show recent projects with Finder/Sync/Timer options
+  const {
+    updateRecentProjects,
+    onOpenFinder,
+    onSyncProject,
+    onTimerStart,
+    onTimerPause,
+    onTimerResume,
+    onTimerStop,
+  } = useSystemTray();
 
-  // Update tray menu when projects change
+  // Timer store for tray integration
+  const {
+    activeSessions,
+    startSession,
+    stopSession,
+    pauseSession,
+    resumeSession,
+  } = useTimeStore();
+
+  // Update tray menu when projects or timer states change
   useEffect(() => {
-    updateRecentProjects(projects);
-  }, [projects, updateRecentProjects]);
+    const timerStates = projects.map((p) => {
+      const session = activeSessions.find((s) => s.projectId === p.id);
+      return {
+        projectId: p.id,
+        isActive: session !== undefined,
+        isPaused: session?.isPaused ?? false,
+      };
+    });
+    updateRecentProjects(projects, timerStates);
+  }, [projects, activeSessions, updateRecentProjects]);
 
   // Handle open finder from tray menu
   useEffect(() => {
@@ -190,6 +215,31 @@ export function App() {
       }
     });
   }, [projects, onSyncProject, selectProject]);
+
+  // Handle timer controls from tray menu
+  useEffect(() => {
+    onTimerStart((projectId) => {
+      startSession(projectId);
+    });
+  }, [onTimerStart, startSession]);
+
+  useEffect(() => {
+    onTimerPause((projectId) => {
+      pauseSession(projectId);
+    });
+  }, [onTimerPause, pauseSession]);
+
+  useEffect(() => {
+    onTimerResume((projectId) => {
+      resumeSession(projectId);
+    });
+  }, [onTimerResume, resumeSession]);
+
+  useEffect(() => {
+    onTimerStop((projectId) => {
+      stopSession(projectId);
+    });
+  }, [onTimerStop, stopSession]);
 
   // Handle native macOS menu events
   useMenuEvents({

@@ -14,17 +14,27 @@ const log = logger.scope('SystemTray');
 
 export type TrayIconState = 'normal' | 'syncing' | 'success';
 
+export interface TimerState {
+  projectId: string;
+  isActive: boolean;
+  isPaused: boolean;
+}
+
 export interface UseSystemTrayResult {
   // State
   isAvailable: boolean;
 
   // Actions
-  updateRecentProjects: (projects: Project[]) => Promise<void>;
+  updateRecentProjects: (projects: Project[], timerStates?: TimerState[]) => Promise<void>;
   setSyncIndicator: (state: TrayIconState) => Promise<void>;
 
   // Event handlers
   onOpenFinder: (callback: (projectId: string) => void) => void;
   onSyncProject: (callback: (projectId: string) => void) => void;
+  onTimerStart: (callback: (projectId: string) => void) => void;
+  onTimerPause: (callback: (projectId: string) => void) => void;
+  onTimerResume: (callback: (projectId: string) => void) => void;
+  onTimerStop: (callback: (projectId: string) => void) => void;
 }
 
 /**
@@ -53,6 +63,10 @@ export function useSystemTray(): UseSystemTrayResult {
   const [isAvailable, setIsAvailable] = useState(false);
   const [openFinderHandler, setOpenFinderHandler] = useState<((id: string) => void) | null>(null);
   const [syncProjectHandler, setSyncProjectHandler] = useState<((id: string) => void) | null>(null);
+  const [timerStartHandler, setTimerStartHandler] = useState<((id: string) => void) | null>(null);
+  const [timerPauseHandler, setTimerPauseHandler] = useState<((id: string) => void) | null>(null);
+  const [timerResumeHandler, setTimerResumeHandler] = useState<((id: string) => void) | null>(null);
+  const [timerStopHandler, setTimerStopHandler] = useState<((id: string) => void) | null>(null);
 
   // Check if system tray is available
   useEffect(() => {
@@ -91,6 +105,31 @@ export function useSystemTray(): UseSystemTrayResult {
           syncProjectHandler?.(event.payload);
         });
         unlistenFns.push(unlistenSync);
+
+        // Listen for timer events
+        const unlistenTimerStart = await listen<string>('tray:timer-start', (event) => {
+          log.debug('Received tray:timer-start event', event.payload);
+          timerStartHandler?.(event.payload);
+        });
+        unlistenFns.push(unlistenTimerStart);
+
+        const unlistenTimerPause = await listen<string>('tray:timer-pause', (event) => {
+          log.debug('Received tray:timer-pause event', event.payload);
+          timerPauseHandler?.(event.payload);
+        });
+        unlistenFns.push(unlistenTimerPause);
+
+        const unlistenTimerResume = await listen<string>('tray:timer-resume', (event) => {
+          log.debug('Received tray:timer-resume event', event.payload);
+          timerResumeHandler?.(event.payload);
+        });
+        unlistenFns.push(unlistenTimerResume);
+
+        const unlistenTimerStop = await listen<string>('tray:timer-stop', (event) => {
+          log.debug('Received tray:timer-stop event', event.payload);
+          timerStopHandler?.(event.payload);
+        });
+        unlistenFns.push(unlistenTimerStop);
       } catch (err) {
         log.error('Failed to setup tray event listeners', err);
       }
@@ -101,10 +140,10 @@ export function useSystemTray(): UseSystemTrayResult {
     return () => {
       unlistenFns.forEach((unlisten) => unlisten());
     };
-  }, [openFinderHandler, syncProjectHandler]);
+  }, [openFinderHandler, syncProjectHandler, timerStartHandler, timerPauseHandler, timerResumeHandler, timerStopHandler]);
 
   const updateRecentProjects = useCallback(
-    async (projects: Project[]) => {
+    async (projects: Project[], timerStates?: TimerState[]) => {
       if (!isAvailable) return;
 
       try {
@@ -112,13 +151,18 @@ export function useSystemTray(): UseSystemTrayResult {
         const recentProjects = [...projects]
           .sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime())
           .slice(0, 7)
-          .map((p) => ({
-            id: p.id,
-            name: p.name,
-            client: p.client,
-            path: p.path,
-            hasFtp: p.sftp?.configured === true,
-          }));
+          .map((p) => {
+            const timerState = timerStates?.find((t) => t.projectId === p.id);
+            return {
+              id: p.id,
+              name: p.name,
+              client: p.client,
+              path: p.path,
+              hasFtp: p.sftp?.configured === true,
+              hasActiveTimer: timerState?.isActive ?? false,
+              isTimerPaused: timerState?.isPaused ?? false,
+            };
+          });
 
         await invoke('tray_update_recent_projects', { projects: recentProjects });
         log.debug('Updated tray recent projects', { count: recentProjects.length });
@@ -135,6 +179,22 @@ export function useSystemTray(): UseSystemTrayResult {
 
   const onSyncProject = useCallback((callback: (projectId: string) => void) => {
     setSyncProjectHandler(() => callback);
+  }, []);
+
+  const onTimerStart = useCallback((callback: (projectId: string) => void) => {
+    setTimerStartHandler(() => callback);
+  }, []);
+
+  const onTimerPause = useCallback((callback: (projectId: string) => void) => {
+    setTimerPauseHandler(() => callback);
+  }, []);
+
+  const onTimerResume = useCallback((callback: (projectId: string) => void) => {
+    setTimerResumeHandler(() => callback);
+  }, []);
+
+  const onTimerStop = useCallback((callback: (projectId: string) => void) => {
+    setTimerStopHandler(() => callback);
   }, []);
 
   const setSyncIndicator = useCallback(
@@ -157,5 +217,9 @@ export function useSystemTray(): UseSystemTrayResult {
     setSyncIndicator,
     onOpenFinder,
     onSyncProject,
+    onTimerStart,
+    onTimerPause,
+    onTimerResume,
+    onTimerStop,
   };
 }
