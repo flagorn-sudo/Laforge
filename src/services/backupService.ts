@@ -13,7 +13,9 @@ import { Settings, Project } from '../types';
 import { configStore } from './configStore';
 
 // Version du format de backup pour compatibilité future
-const BACKUP_VERSION = '1.0';
+// v1.0 - Format initial
+// v2.0 - Ajout du registre de projets (registeredProjects)
+const BACKUP_VERSION = '2.0';
 const FILE_EXTENSION = 'fg';
 const FILE_DESCRIPTION = 'Fichier de sauvegarde La Forge';
 
@@ -23,6 +25,7 @@ export interface BackupData {
   appName: string;
   settings: Partial<Settings> & { geminiApiKey?: string };
   projects: ProjectBackup[];
+  registeredProjects?: string[];  // v2.0: Liste des chemins de projets enregistrés
 }
 
 export interface ProjectBackup {
@@ -112,6 +115,7 @@ export async function exportBackup(
       appName: 'La Forge',
       settings: {
         workspacePath: settings.workspacePath,
+        registeredProjects: settings.registeredProjects, // v2.0: Registre de projets
         geminiApiKey: settings.geminiApiKey, // Clé API incluse
         geminiModel: settings.geminiModel,
         folderStructure: settings.folderStructure,
@@ -119,6 +123,7 @@ export async function exportBackup(
         showMenuBarIcon: settings.showMenuBarIcon,
       },
       projects: projectsWithPasswords,
+      registeredProjects: settings.registeredProjects || [], // v2.0: Également au niveau racine pour clarté
     };
 
     // Demander à l'utilisateur où sauvegarder
@@ -207,11 +212,23 @@ export async function applyBackupData(
   const errors: string[] = [];
   let projectsRestored = 0;
 
-  // Restaurer les paramètres (y compris la clé API Gemini)
+  // Restaurer les paramètres (y compris la clé API Gemini et le registre de projets)
   try {
     if (data.settings) {
+      // Déterminer le registre de projets à restaurer
+      // Priorité: registeredProjects au niveau racine (v2.0), sinon settings, sinon extraire des projets
+      let registeredProjects = data.registeredProjects
+        || data.settings.registeredProjects
+        || [];
+
+      // Si pas de registre mais des projets (backup v1.0), extraire les chemins
+      if (registeredProjects.length === 0 && data.projects.length > 0) {
+        registeredProjects = data.projects.map((p) => p.path);
+      }
+
       updateSettings({
         workspacePath: data.settings.workspacePath,
+        registeredProjects, // v2.0: Registre de projets restauré
         geminiApiKey: data.settings.geminiApiKey, // Clé API restaurée
         geminiModel: data.settings.geminiModel,
         folderStructure: data.settings.folderStructure,

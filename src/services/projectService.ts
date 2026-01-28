@@ -1,12 +1,16 @@
 import { invoke } from '@tauri-apps/api/tauri';
-import { readDir, readTextFile, writeTextFile, createDir, removeDir } from '@tauri-apps/api/fs';
-import { join } from '@tauri-apps/api/path';
+import { readDir, readTextFile, writeTextFile, createDir, removeDir, exists } from '@tauri-apps/api/fs';
+import { join, basename } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/api/shell';
-import { Project, DEFAULT_FOLDER_STRUCTURE, migrateProjectStatus } from '../types';
+import { Project, DEFAULT_FOLDER_STRUCTURE, migrateProjectStatus, ImportAnalysis, ProjectHealth } from '../types';
 import { ProjectFormData } from '../components/ProjectForm';
 import { configStore } from './configStore';
 
 export const projectService = {
+  /**
+   * @deprecated Use loadRegisteredProjects instead
+   * Kept for backwards compatibility during migration
+   */
   async scanProjects(workspacePath: string): Promise<Project[]> {
     if (!workspacePath) return [];
 
@@ -28,6 +32,102 @@ export const projectService = {
     } catch (error) {
       console.error('Error scanning projects:', error);
       return [];
+    }
+  },
+
+  /**
+   * Load projects from a list of registered paths
+   * Returns both successfully loaded projects and errors for missing/inaccessible paths
+   */
+  async loadRegisteredProjects(registeredPaths: string[]): Promise<{
+    projects: Project[];
+    errors: ProjectHealth[];
+  }> {
+    const projects: Project[] = [];
+    const errors: ProjectHealth[] = [];
+
+    for (const path of registeredPaths) {
+      try {
+        // Check if the folder exists
+        const folderExists = await this.checkFolderExists(path);
+
+        if (!folderExists) {
+          errors.push({
+            path,
+            exists: false,
+            accessible: false,
+            lastChecked: new Date().toISOString(),
+            error: 'Dossier introuvable',
+          });
+          continue;
+        }
+
+        // Get the project name from path
+        const name = await basename(path);
+
+        // Load the project
+        const project = await this.loadProject(path, name);
+        if (project) {
+          projects.push(project);
+        }
+      } catch (e) {
+        // Handle permission or other errors
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        const isPermissionError = errorMessage.toLowerCase().includes('permission')
+          || errorMessage.toLowerCase().includes('access');
+
+        errors.push({
+          path,
+          exists: true, // Might exist but not accessible
+          accessible: false,
+          lastChecked: new Date().toISOString(),
+          error: isPermissionError
+            ? 'Accès refusé - vérifiez les permissions dans Préférences Système > Confidentialité'
+            : errorMessage,
+        });
+      }
+    }
+
+    return {
+      projects: projects.sort((a, b) => a.name.localeCompare(b.name)),
+      errors,
+    };
+  },
+
+  /**
+   * Check if a folder exists and is accessible
+   */
+  async checkFolderExists(path: string): Promise<boolean> {
+    try {
+      return await exists(path);
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Register a project path (for use by settingsStore)
+   * Returns true if the path is valid and was registered
+   */
+  async validateProjectPath(path: string): Promise<{ valid: boolean; error?: string }> {
+    try {
+      const folderExists = await this.checkFolderExists(path);
+      if (!folderExists) {
+        return { valid: false, error: 'Le dossier n\'existe pas' };
+      }
+
+      // Check if it's a directory by trying to read it
+      try {
+        await readDir(path);
+        return { valid: true };
+      } catch {
+        return { valid: false, error: 'Le chemin n\'est pas un dossier valide' };
+      }
+    } catch (e) {
+      return {
+        valid: false,
+        error: e instanceof Error ? e.message : 'Erreur de validation',
+      };
     }
   },
 
@@ -348,5 +448,171 @@ body { font-family: system-ui, sans-serif; line-height: 1.6; }`
     } catch (err) {
       console.error('[projectService] Failed to open URL:', err);
     }
+  },
+
+  /**
+   * Open a project folder in PyCharm
+   * Uses the 'pycharm' CLI command (requires PyCharm to have CLI tools installed)
+   */
+  async openInPyCharm(projectPath: string, sourcePath?: string): Promise<void> {
+    // Open sourcePath subfolder if specified, otherwise project root
+    const pathToOpen = sourcePath
+      ? await join(projectPath, sourcePath)
+      : projectPath;
+
+    try {
+      // Try opening with PyCharm CLI
+      await invoke('open_in_editor', { path: pathToOpen, editor: 'pycharm' });
+    } catch (err) {
+      console.error('[projectService] Failed to open in PyCharm:', err);
+      // Fallback: try opening with generic 'open' command
+      try {
+        await open(`pycharm://${pathToOpen}`);
+      } catch (fallbackErr) {
+        console.error('[projectService] Fallback also failed:', fallbackErr);
+      }
+    }
+  },
+
+  /**
+   * Analyze an existing folder to determine what Forge structure exists
+   */
+  async analyzeExistingFolder(folderPath: string): Promise<ImportAnalysis> {
+    // Get folder name from path
+    const name = await basename(folderPath);
+
+    // Read directory contents
+    let entries;
+    try {
+      entries = await readDir(folderPath);
+    } catch (error) {
+      throw new Error(`Impossible de lire le dossier: ${error}`);
+    }
+
+    // Get list of existing folders (first level only)
+    const existingFolderNames = new Set<string>();
+    for (const entry of entries) {
+      if (entry.children !== undefined && entry.name) {
+        existingFolderNames.add(entry.name);
+      }
+    }
+
+    // Compare with DEFAULT_FOLDER_STRUCTURE
+    const existingFolders: string[] = [];
+    const missingFolders: string[] = [];
+
+    // Get unique top-level folders from DEFAULT_FOLDER_STRUCTURE
+    const topLevelFolders = new Set(
+      DEFAULT_FOLDER_STRUCTURE.map(f => f.split('/')[0])
+    );
+
+    for (const folder of topLevelFolders) {
+      if (existingFolderNames.has(folder)) {
+        existingFolders.push(folder);
+      } else {
+        missingFolders.push(folder);
+      }
+    }
+
+    // Check if config already exists in store
+    let hasExistingConfig = false;
+    try {
+      const storedConfig = await configStore.getProjectConfig(folderPath);
+      hasExistingConfig = !!storedConfig;
+    } catch {
+      hasExistingConfig = false;
+    }
+
+    // Detect local path (deployment folder)
+    let suggestedLocalPath = 'www';
+    if (existingFolderNames.has('www')) {
+      suggestedLocalPath = 'www';
+    } else if (existingFolderNames.has('public')) {
+      suggestedLocalPath = 'public';
+    } else if (existingFolderNames.has('dist')) {
+      suggestedLocalPath = 'dist';
+    } else if (existingFolderNames.has('build')) {
+      suggestedLocalPath = 'build';
+    }
+
+    return {
+      name,
+      path: folderPath,
+      existingFolders,
+      missingFolders,
+      hasExistingConfig,
+      suggestedLocalPath,
+    };
+  },
+
+  /**
+   * Import an existing project folder into Forge
+   */
+  async importProject(
+    folderPath: string,
+    data: ProjectFormData,
+    createMissingFolders: boolean,
+    existingProjects: Project[]
+  ): Promise<Project> {
+    // Check if project already exists
+    const alreadyExists = existingProjects.some(p => p.path === folderPath);
+    if (alreadyExists) {
+      throw new Error('Ce projet existe déjà dans La Forge');
+    }
+
+    // Analyze the folder
+    const analysis = await this.analyzeExistingFolder(folderPath);
+
+    // Create missing folders if requested
+    if (createMissingFolders && analysis.missingFolders.length > 0) {
+      console.log('[projectService] Creating missing folders:', analysis.missingFolders);
+      for (const folder of DEFAULT_FOLDER_STRUCTURE) {
+        const topLevel = folder.split('/')[0];
+        if (analysis.missingFolders.includes(topLevel)) {
+          await createDir(await join(folderPath, folder), { recursive: true });
+        }
+      }
+    }
+
+    const hasSftp = data.sftp.host && data.sftp.username;
+
+    // Create project object
+    const project: Project = {
+      id: folderPath,
+      name: data.name || analysis.name,
+      path: folderPath,
+      client: data.client || undefined,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      status: 'prospect',
+      urls: {
+        currentSite: data.currentSiteUrl || undefined,
+        production: data.currentSiteUrl || undefined,
+      },
+      sftp: hasSftp
+        ? {
+            configured: true,
+            host: data.sftp.host,
+            username: data.sftp.username,
+            port: data.sftp.port || 21,
+            remotePath: data.sftp.remotePath || '/public_html',
+            passive: data.sftp.passive ?? true,
+            protocol: data.sftp.protocol || 'ftp',
+            acceptInvalidCerts: data.sftp.acceptInvalidCerts ?? false,
+          }
+        : { configured: false },
+      scraping: data.currentSiteUrl
+        ? { completed: false, sourceUrl: data.currentSiteUrl }
+        : { completed: false },
+      colors: [],
+      fonts: [],
+      localPath: data.localPath || analysis.suggestedLocalPath || 'www',
+      referenceWebsites: [],
+    };
+
+    // Save project config (don't create template files for imported projects)
+    await this.saveProject(project);
+
+    return project;
   },
 };

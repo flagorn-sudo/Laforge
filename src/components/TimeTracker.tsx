@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Play, Square, Clock, DollarSign, Calendar, ChevronDown, X, Plus, History } from 'lucide-react';
+import { Play, Square, Pause, Clock, DollarSign, Calendar, ChevronDown, X, Plus, History } from 'lucide-react';
 import { useTimeStore, formatDuration, formatDurationShort, calculateBillableForProject } from '../stores/timeStore';
 import { ProjectBilling, GlobalBillingSettings, BillingUnit, BILLING_UNIT_CONFIG } from '../types';
 import { Button } from './ui';
@@ -36,9 +36,11 @@ export function TimeTracker({
 }: TimeTrackerProps) {
   void _projectName; // Reserved for future use (e.g., session labels)
   const {
-    activeSession,
+    activeSessions,
     startSession,
     stopSession,
+    pauseSession,
+    resumeSession,
     getProjectStats,
     getTodayTotal,
     getWeekTotal,
@@ -47,35 +49,51 @@ export function TimeTracker({
   const [elapsed, setElapsed] = useState(0);
   const [showDetails, setShowDetails] = useState(false);
 
-  const isActive = activeSession?.projectId === projectId;
-  const isOtherProjectActive = activeSession !== null && !isActive;
+  // Find active session for this project
+  const activeSession = activeSessions.find(s => s.projectId === projectId) || null;
+  const isActive = activeSession !== null;
+  const isPaused = activeSession?.isPaused ?? false;
 
-  // Update elapsed time every second when active
+  // Update elapsed time every second when active and not paused
   useEffect(() => {
     if (!isActive || !activeSession) {
       setElapsed(0);
       return;
     }
 
-    const startTime = new Date(activeSession.startTime).getTime();
-
     const updateElapsed = () => {
-      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+      if (activeSession.isPaused) {
+        // When paused, show accumulated time
+        setElapsed(activeSession.accumulatedTime);
+      } else {
+        // When running, show accumulated + current running time
+        const startTime = new Date(activeSession.startTime).getTime();
+        const runningTime = Math.floor((Date.now() - startTime) / 1000);
+        setElapsed(activeSession.accumulatedTime + runningTime);
+      }
     };
 
     updateElapsed();
     const interval = setInterval(updateElapsed, 1000);
 
     return () => clearInterval(interval);
-  }, [isActive, activeSession]);
+  }, [isActive, activeSession, activeSession?.isPaused, activeSession?.accumulatedTime, activeSession?.startTime]);
 
   const handleStart = useCallback(() => {
     startSession(projectId);
   }, [projectId, startSession]);
 
   const handleStop = useCallback(() => {
-    stopSession();
-  }, [stopSession]);
+    stopSession(projectId);
+  }, [projectId, stopSession]);
+
+  const handlePause = useCallback(() => {
+    pauseSession(projectId);
+  }, [projectId, pauseSession]);
+
+  const handleResume = useCallback(() => {
+    resumeSession(projectId);
+  }, [projectId, resumeSession]);
 
   const stats = getProjectStats(projectId);
   const todayTotal = getTodayTotal(projectId);
@@ -98,35 +116,55 @@ export function TimeTracker({
 
   if (compact) {
     return (
-      <div className={`time-tracker-compact ${isActive ? 'active' : ''}`}>
-        <button
-          className={`timer-toggle ${isActive ? 'active' : ''} ${isOtherProjectActive ? 'disabled' : ''}`}
-          onClick={isActive ? handleStop : handleStart}
-          disabled={isOtherProjectActive}
-          title={isOtherProjectActive ? 'Un autre projet est en cours' : isActive ? 'Arreter le timer' : 'Demarrer le timer'}
-        >
-          {isActive ? (
-            <>
-              <Square size={12} className="icon-stop" />
-              <span className="timer-value">{formatDuration(elapsed)}</span>
-            </>
-          ) : (
-            <>
-              <Play size={12} />
-              <span className="timer-label">Timer</span>
-            </>
-          )}
-        </button>
+      <div className={`time-tracker-compact ${isActive ? 'active' : ''} ${isPaused ? 'paused' : ''}`}>
+        {isActive ? (
+          <div className="timer-toggle-group">
+            <button
+              className={`timer-toggle active ${isPaused ? 'paused' : ''}`}
+              onClick={isPaused ? handleResume : handlePause}
+              title={isPaused ? 'Reprendre le timer' : 'Mettre en pause'}
+            >
+              {isPaused ? (
+                <>
+                  <Play size={12} />
+                  <span className="timer-value paused">{formatDuration(elapsed)}</span>
+                </>
+              ) : (
+                <>
+                  <Pause size={12} className="icon-pause" />
+                  <span className="timer-value">{formatDuration(elapsed)}</span>
+                </>
+              )}
+            </button>
+            <button
+              className="timer-stop-btn"
+              onClick={handleStop}
+              title="Arreter le timer"
+            >
+              <Square size={12} />
+            </button>
+          </div>
+        ) : (
+          <button
+            className="timer-toggle"
+            onClick={handleStart}
+            title="Demarrer le timer"
+          >
+            <Play size={12} />
+            <span className="timer-label">Timer</span>
+          </button>
+        )}
       </div>
     );
   }
 
   return (
-    <div className={`time-tracker ${isActive ? 'active' : ''}`}>
+    <div className={`time-tracker ${isActive ? 'active' : ''} ${isPaused ? 'paused' : ''}`}>
       <div className="time-tracker-header">
         <div className="header-left">
           <Clock size={16} />
           <span className="header-title">Temps de travail</span>
+          {isPaused && <span className="paused-badge">En pause</span>}
         </div>
         <button
           className="details-toggle"
@@ -138,7 +176,7 @@ export function TimeTracker({
 
       <div className="time-tracker-main">
         <div className="timer-display">
-          <span className={`timer-value ${isActive ? 'running' : ''}`}>
+          <span className={`timer-value ${isActive ? (isPaused ? 'paused' : 'running') : ''}`}>
             {formatDuration(isActive ? elapsed : 0)}
           </span>
           <div className="timer-billing-live">
@@ -149,19 +187,37 @@ export function TimeTracker({
 
         <div className="timer-controls">
           {isActive ? (
-            <Button
-              variant="danger"
-              onClick={handleStop}
-            >
-              <Square size={16} />
-              Stopper
-            </Button>
+            <div className="timer-buttons">
+              {isPaused ? (
+                <Button
+                  variant="success"
+                  onClick={handleResume}
+                >
+                  <Play size={16} />
+                  Reprendre
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={handlePause}
+                  className="btn-pause"
+                >
+                  <Pause size={16} />
+                  Pause
+                </Button>
+              )}
+              <Button
+                variant="danger"
+                onClick={handleStop}
+              >
+                <Square size={16} />
+                Stopper
+              </Button>
+            </div>
           ) : (
             <Button
               variant="success"
               onClick={handleStart}
-              disabled={isOtherProjectActive}
-              title={isOtherProjectActive ? 'Un autre projet est en cours' : undefined}
             >
               <Play size={16} />
               Demarrer
@@ -226,11 +282,12 @@ export function TimeTracker({
 
 // Mini version for header
 export function TimeTrackerMini({ projectId }: { projectId: string }) {
-  const { activeSession, startSession, stopSession } = useTimeStore();
+  const { activeSessions, startSession, stopSession, pauseSession, resumeSession } = useTimeStore();
   const [elapsed, setElapsed] = useState(0);
 
-  const isActive = activeSession?.projectId === projectId;
-  const isOtherProjectActive = activeSession !== null && !isActive;
+  const activeSession = activeSessions.find(s => s.projectId === projectId) || null;
+  const isActive = activeSession !== null;
+  const isPaused = activeSession?.isPaused ?? false;
 
   useEffect(() => {
     if (!isActive || !activeSession) {
@@ -238,36 +295,63 @@ export function TimeTrackerMini({ projectId }: { projectId: string }) {
       return;
     }
 
-    const startTime = new Date(activeSession.startTime).getTime();
     const updateElapsed = () => {
-      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+      if (activeSession.isPaused) {
+        setElapsed(activeSession.accumulatedTime);
+      } else {
+        const startTime = new Date(activeSession.startTime).getTime();
+        const runningTime = Math.floor((Date.now() - startTime) / 1000);
+        setElapsed(activeSession.accumulatedTime + runningTime);
+      }
     };
 
     updateElapsed();
     const interval = setInterval(updateElapsed, 1000);
     return () => clearInterval(interval);
-  }, [isActive, activeSession]);
+  }, [isActive, activeSession, activeSession?.isPaused, activeSession?.accumulatedTime, activeSession?.startTime]);
+
+  const handleClick = () => {
+    if (isActive) {
+      if (isPaused) {
+        resumeSession(projectId);
+      } else {
+        pauseSession(projectId);
+      }
+    } else {
+      startSession(projectId);
+    }
+  };
 
   return (
-    <button
-      className={`time-tracker-mini ${isActive ? 'active' : ''} ${isOtherProjectActive ? 'disabled' : ''}`}
-      onClick={() => isActive ? stopSession() : startSession(projectId)}
-      disabled={isOtherProjectActive}
-      title={isOtherProjectActive ? 'Un autre projet est en cours' : isActive ? 'Arreter' : 'Demarrer le timer'}
-    >
-      {isActive ? (
-        <>
-          <div className="pulse-indicator" />
-          <span className="mini-timer">{formatDuration(elapsed)}</span>
-          <Square size={12} />
-        </>
-      ) : (
-        <>
-          <Clock size={14} />
-          <Play size={12} />
-        </>
+    <div className={`time-tracker-mini-container ${isActive ? 'active' : ''} ${isPaused ? 'paused' : ''}`}>
+      <button
+        className={`time-tracker-mini ${isActive ? 'active' : ''} ${isPaused ? 'paused' : ''}`}
+        onClick={handleClick}
+        title={isActive ? (isPaused ? 'Reprendre' : 'Pause') : 'Demarrer le timer'}
+      >
+        {isActive ? (
+          <>
+            {!isPaused && <div className="pulse-indicator" />}
+            <span className={`mini-timer ${isPaused ? 'paused' : ''}`}>{formatDuration(elapsed)}</span>
+            {isPaused ? <Play size={12} /> : <Pause size={12} />}
+          </>
+        ) : (
+          <>
+            <Clock size={14} />
+            <Play size={12} />
+          </>
+        )}
+      </button>
+      {isActive && (
+        <button
+          className="mini-stop-btn"
+          onClick={() => stopSession(projectId)}
+          title="Arreter le timer"
+        >
+          <Square size={10} />
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 

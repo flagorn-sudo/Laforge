@@ -16,6 +16,15 @@ export interface TimeSession {
   notes?: string;
 }
 
+export interface ActiveSession {
+  id: string;
+  projectId: string;
+  startTime: string;
+  isPaused: boolean;
+  pausedAt?: string;        // When pause started
+  accumulatedTime: number;  // Time accumulated before pause (in seconds)
+}
+
 export interface ProjectTimeStats {
   projectId: string;
   totalSeconds: number;
@@ -24,11 +33,8 @@ export interface ProjectTimeStats {
 }
 
 interface TimeState {
-  // Active session
-  activeSession: {
-    projectId: string;
-    startTime: string;
-  } | null;
+  // Multiple active sessions (one per project)
+  activeSessions: ActiveSession[];
 
   // All sessions history
   sessions: TimeSession[];
@@ -38,15 +44,16 @@ interface TimeState {
 
   // Actions
   startSession: (projectId: string) => void;
-  stopSession: (notes?: string) => TimeSession | null;
-  pauseSession: () => void;
-  resumeSession: () => void;
+  stopSession: (projectId: string, notes?: string) => TimeSession | null;
+  pauseSession: (projectId: string) => void;
+  resumeSession: (projectId: string) => void;
   deleteSession: (sessionId: string) => void;
   addManualSession: (projectId: string, hours: number, minutes: number, notes?: string) => TimeSession;
   setHourlyRate: (rate: number) => void;
 
   // Queries
-  getActiveSession: () => { projectId: string; startTime: string } | null;
+  getActiveSession: (projectId: string) => ActiveSession | null;
+  getActiveSessionsCount: () => number;
   getSessionsForProject: (projectId: string) => TimeSession[];
   getProjectStats: (projectId: string) => ProjectTimeStats;
   getTodayTotal: (projectId?: string) => number;
@@ -83,71 +90,133 @@ const getStartOfMonth = (date: Date): Date => {
   return d;
 };
 
+// Validate and clean session data
+function validateSessions(sessions: TimeSession[]): TimeSession[] {
+  return sessions.filter((session) => {
+    // Check required fields
+    if (!session.id || !session.projectId || !session.startTime) {
+      console.warn('[timeStore] Removing invalid session (missing fields):', session);
+      return false;
+    }
+    // Check duration is reasonable (max 24 hours = 86400 seconds per session)
+    if (session.duration < 0 || session.duration > 86400) {
+      console.warn('[timeStore] Removing session with invalid duration:', session);
+      return false;
+    }
+    return true;
+  });
+}
+
 export const useTimeStore = create<TimeState>()(
   persist(
     (set, get) => ({
-      activeSession: null,
+      activeSessions: [],
       sessions: [],
       hourlyRate: 75,
 
       startSession: (projectId: string) => {
         const state = get();
 
-        // Stop any existing session first
-        if (state.activeSession) {
-          state.stopSession();
+        // Check if this project already has an active session
+        const existingSession = state.activeSessions.find(s => s.projectId === projectId);
+        if (existingSession) {
+          // If paused, resume it instead
+          if (existingSession.isPaused) {
+            state.resumeSession(projectId);
+          }
+          return;
         }
 
+        // Create new active session for this project
+        const newSession: ActiveSession = {
+          id: generateId(),
+          projectId,
+          startTime: new Date().toISOString(),
+          isPaused: false,
+          accumulatedTime: 0,
+        };
+
         set({
-          activeSession: {
-            projectId,
-            startTime: new Date().toISOString(),
-          },
+          activeSessions: [...state.activeSessions, newSession],
         });
       },
 
-      stopSession: (notes?: string) => {
+      stopSession: (projectId: string, notes?: string) => {
         const state = get();
-        if (!state.activeSession) return null;
+        const activeSession = state.activeSessions.find(s => s.projectId === projectId);
+        if (!activeSession) return null;
 
         const endTime = new Date();
-        const startTime = new Date(state.activeSession.startTime);
-        const duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+        let duration: number;
+
+        if (activeSession.isPaused && activeSession.pausedAt) {
+          // Session was paused - use accumulated time
+          duration = activeSession.accumulatedTime;
+        } else {
+          // Session was running - calculate total time
+          const startTime = new Date(activeSession.startTime);
+          const runningTime = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+          duration = activeSession.accumulatedTime + runningTime;
+        }
 
         const session: TimeSession = {
           id: generateId(),
-          projectId: state.activeSession.projectId,
-          startTime: state.activeSession.startTime,
+          projectId: activeSession.projectId,
+          startTime: activeSession.startTime,
           endTime: endTime.toISOString(),
           duration,
           notes,
         };
 
         set((state) => ({
-          activeSession: null,
+          activeSessions: state.activeSessions.filter(s => s.projectId !== projectId),
           sessions: [...state.sessions, session],
         }));
 
         return session;
       },
 
-      pauseSession: () => {
+      pauseSession: (projectId: string) => {
         const state = get();
-        if (!state.activeSession) return;
+        const activeSession = state.activeSessions.find(s => s.projectId === projectId);
+        if (!activeSession || activeSession.isPaused) return;
 
-        // Stop current session but don't clear notes
-        state.stopSession();
+        const now = new Date();
+        const startTime = new Date(activeSession.startTime);
+        const currentRunningTime = Math.floor((now.getTime() - startTime.getTime()) / 1000);
+
+        set({
+          activeSessions: state.activeSessions.map(s =>
+            s.projectId === projectId
+              ? {
+                  ...s,
+                  isPaused: true,
+                  pausedAt: now.toISOString(),
+                  accumulatedTime: s.accumulatedTime + currentRunningTime,
+                  startTime: now.toISOString(), // Reset for next resume
+                }
+              : s
+          ),
+        });
       },
 
-      resumeSession: () => {
+      resumeSession: (projectId: string) => {
         const state = get();
-        if (state.activeSession) return;
+        const activeSession = state.activeSessions.find(s => s.projectId === projectId);
+        if (!activeSession || !activeSession.isPaused) return;
 
-        // Get the last session and resume for same project
-        const lastSession = state.sessions[state.sessions.length - 1];
-        if (lastSession) {
-          state.startSession(lastSession.projectId);
-        }
+        set({
+          activeSessions: state.activeSessions.map(s =>
+            s.projectId === projectId
+              ? {
+                  ...s,
+                  isPaused: false,
+                  pausedAt: undefined,
+                  startTime: new Date().toISOString(), // New start time for running period
+                }
+              : s
+          ),
+        });
       },
 
       deleteSession: (sessionId: string) => {
@@ -181,8 +250,12 @@ export const useTimeStore = create<TimeState>()(
         set({ hourlyRate: rate });
       },
 
-      getActiveSession: () => {
-        return get().activeSession;
+      getActiveSession: (projectId: string) => {
+        return get().activeSessions.find(s => s.projectId === projectId) || null;
+      },
+
+      getActiveSessionsCount: () => {
+        return get().activeSessions.length;
       },
 
       getSessionsForProject: (projectId: string) => {
@@ -212,15 +285,22 @@ export const useTimeStore = create<TimeState>()(
           sessions = sessions.filter((s) => s.projectId === projectId);
         }
 
-        // Add active session time if applicable
-        const activeSession = get().activeSession;
+        // Add active sessions time
+        const activeSessions = get().activeSessions;
         let activeTime = 0;
-        if (activeSession && (!projectId || activeSession.projectId === projectId)) {
-          const startTime = new Date(activeSession.startTime);
-          if (startTime.getTime() >= startOfDay) {
-            activeTime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+        activeSessions.forEach(activeSession => {
+          if (!projectId || activeSession.projectId === projectId) {
+            // Add accumulated time
+            activeTime += activeSession.accumulatedTime;
+            // Add running time if not paused
+            if (!activeSession.isPaused) {
+              const startTime = new Date(activeSession.startTime);
+              if (startTime.getTime() >= startOfDay) {
+                activeTime += Math.floor((Date.now() - startTime.getTime()) / 1000);
+              }
+            }
           }
-        }
+        });
 
         return sessions.reduce((sum, s) => sum + s.duration, 0) + activeTime;
       },
@@ -235,12 +315,17 @@ export const useTimeStore = create<TimeState>()(
           sessions = sessions.filter((s) => s.projectId === projectId);
         }
 
-        // Add active session time if applicable
-        const activeSession = get().activeSession;
+        // Add active sessions time
+        const activeSessions = get().activeSessions;
         let activeTime = 0;
-        if (activeSession && (!projectId || activeSession.projectId === projectId)) {
-          activeTime = Math.floor((Date.now() - new Date(activeSession.startTime).getTime()) / 1000);
-        }
+        activeSessions.forEach(activeSession => {
+          if (!projectId || activeSession.projectId === projectId) {
+            activeTime += activeSession.accumulatedTime;
+            if (!activeSession.isPaused) {
+              activeTime += Math.floor((Date.now() - new Date(activeSession.startTime).getTime()) / 1000);
+            }
+          }
+        });
 
         return sessions.reduce((sum, s) => sum + s.duration, 0) + activeTime;
       },
@@ -255,12 +340,17 @@ export const useTimeStore = create<TimeState>()(
           sessions = sessions.filter((s) => s.projectId === projectId);
         }
 
-        // Add active session time if applicable
-        const activeSession = get().activeSession;
+        // Add active sessions time
+        const activeSessions = get().activeSessions;
         let activeTime = 0;
-        if (activeSession && (!projectId || activeSession.projectId === projectId)) {
-          activeTime = Math.floor((Date.now() - new Date(activeSession.startTime).getTime()) / 1000);
-        }
+        activeSessions.forEach(activeSession => {
+          if (!projectId || activeSession.projectId === projectId) {
+            activeTime += activeSession.accumulatedTime;
+            if (!activeSession.isPaused) {
+              activeTime += Math.floor((Date.now() - new Date(activeSession.startTime).getTime()) / 1000);
+            }
+          }
+        });
 
         return sessions.reduce((sum, s) => sum + s.duration, 0) + activeTime;
       },
@@ -277,8 +367,34 @@ export const useTimeStore = create<TimeState>()(
       partialize: (state) => ({
         sessions: state.sessions,
         hourlyRate: state.hourlyRate,
-        activeSession: state.activeSession,
+        activeSessions: state.activeSessions,
       }),
+      // Validate and clean data on rehydration
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          const validatedSessions = validateSessions(state.sessions || []);
+          if (validatedSessions.length !== (state.sessions || []).length) {
+            console.log('[timeStore] Cleaned', (state.sessions || []).length - validatedSessions.length, 'invalid sessions');
+            state.sessions = validatedSessions;
+          }
+          // Migrate old activeSession to new activeSessions format
+          if ((state as any).activeSession && !state.activeSessions) {
+            const oldSession = (state as any).activeSession;
+            state.activeSessions = [{
+              id: generateId(),
+              projectId: oldSession.projectId,
+              startTime: oldSession.startTime,
+              isPaused: false,
+              accumulatedTime: 0,
+            }];
+            delete (state as any).activeSession;
+          }
+          // Ensure activeSessions is always an array
+          if (!state.activeSessions) {
+            state.activeSessions = [];
+          }
+        }
+      },
     }
   )
 );

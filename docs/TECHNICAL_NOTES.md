@@ -666,6 +666,28 @@ cd src-tauri && cargo build --release
 npm run typecheck
 ```
 
+### Installation dans /Applications (IMPORTANT pour Claude)
+
+**Apres chaque modification testable, Claude DOIT reinstaller l'app automatiquement:**
+
+```bash
+# 1. Build l'application
+npm run tauri build
+
+# 2. Fermer l'ancienne instance + copier dans /Applications
+pkill -f "La Forge" 2>/dev/null || true
+sleep 1
+rm -rf "/Applications/La Forge.app"
+cp -R "src-tauri/target/release/bundle/macos/La Forge.app" /Applications/
+```
+
+**Commande complete en une ligne:**
+```bash
+npm run tauri build && pkill -f "La Forge" 2>/dev/null || true && sleep 1 && rm -rf "/Applications/La Forge.app" && cp -R "src-tauri/target/release/bundle/macos/La Forge.app" /Applications/
+```
+
+**Note**: Le build DMG peut echouer mais le .app est cree. Ignorer l'erreur DMG.
+
 ---
 
 ## Dependances Principales

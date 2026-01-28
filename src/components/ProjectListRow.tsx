@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Folder, Globe, CheckCircle, XCircle, AlertCircle, RefreshCw, Loader, ChevronDown } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Folder, Globe, CheckCircle, XCircle, AlertCircle, RefreshCw, Loader, ChevronDown, Code2, Clock, Play, Pause, Square } from 'lucide-react';
 import { Project, PROJECT_STATUS_CONFIG, ProjectStatus } from '../types';
 import { projectService } from '../services/projectService';
 import { SyncStage, RetryState } from '../stores/syncStore';
+import { useTimeStore, formatDuration } from '../stores/timeStore';
+import { getProjectDisplayName, getProjectSubtitle } from '../utils/projectDisplay';
 
 interface SyncState {
   stage: SyncStage;
@@ -31,6 +33,36 @@ export function ProjectListRow({
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const statusConfig = PROJECT_STATUS_CONFIG[project.status];
 
+  // Timer state
+  const activeSessions = useTimeStore((state) => state.activeSessions);
+  const startSession = useTimeStore((state) => state.startSession);
+  const stopSession = useTimeStore((state) => state.stopSession);
+  const pauseSession = useTimeStore((state) => state.pauseSession);
+  const resumeSession = useTimeStore((state) => state.resumeSession);
+  const activeSession = activeSessions.find(s => s.projectId === project.id) || null;
+  const isTimerActive = activeSession !== null;
+  const isPaused = activeSession?.isPaused ?? false;
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!isTimerActive || !activeSession) {
+      setElapsed(0);
+      return;
+    }
+    const updateElapsed = () => {
+      if (activeSession.isPaused) {
+        setElapsed(activeSession.accumulatedTime);
+      } else {
+        const startTime = new Date(activeSession.startTime).getTime();
+        const runningTime = Math.floor((Date.now() - startTime) / 1000);
+        setElapsed(activeSession.accumulatedTime + runningTime);
+      }
+    };
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [isTimerActive, activeSession, activeSession?.isPaused, activeSession?.accumulatedTime, activeSession?.startTime]);
+
   const siteUrl = project.urls.currentSite || project.urls.production;
 
   const isSyncActive = syncState && syncState.stage !== 'idle' && syncState.stage !== 'complete' && syncState.stage !== 'error';
@@ -48,7 +80,7 @@ export function ProjectListRow({
   };
 
   return (
-    <div className="project-list-row" onClick={onClick}>
+    <div className={`project-list-row ${isTimerActive ? 'timer-active' : ''}`} onClick={onClick}>
       <span
         className="status-dot"
         style={{ background: statusConfig.color }}
@@ -56,11 +88,20 @@ export function ProjectListRow({
       />
 
       <div className="row-title">
-        <span className="row-name">{project.client || project.name}</span>
-        {project.client && project.client !== project.name && (
-          <span className="row-subtitle">{project.name}</span>
+        <span className="row-name">{getProjectDisplayName(project)}</span>
+        {getProjectSubtitle(project) && (
+          <span className="row-subtitle">{getProjectSubtitle(project)}</span>
         )}
       </div>
+
+      {/* Timer active indicator */}
+      {isTimerActive && (
+        <div className="timer-badge">
+          <div className="pulse-dot" />
+          <Clock size={12} />
+          <span>{formatDuration(elapsed)}</span>
+        </div>
+      )}
 
       {siteUrl && (
         <span className="row-url">{siteUrl}</span>
@@ -125,6 +166,39 @@ export function ProjectListRow({
         >
           <Folder size={16} />
         </button>
+        <button
+          className="row-action"
+          onClick={() => projectService.openInPyCharm(project.path, project.sourcePath)}
+          title="Ouvrir dans PyCharm"
+        >
+          <Code2 size={16} />
+        </button>
+        {isTimerActive ? (
+          <>
+            <button
+              className={`row-action timer-btn active ${isPaused ? 'paused' : ''}`}
+              onClick={() => isPaused ? resumeSession(project.id) : pauseSession(project.id)}
+              title={isPaused ? 'Reprendre le timer' : 'Mettre en pause'}
+            >
+              {isPaused ? <Play size={14} /> : <Pause size={14} />}
+            </button>
+            <button
+              className="row-action timer-btn stop"
+              onClick={() => stopSession(project.id)}
+              title="Arrêter le timer"
+            >
+              <Square size={14} />
+            </button>
+          </>
+        ) : (
+          <button
+            className="row-action timer-btn"
+            onClick={() => startSession(project.id)}
+            title="Démarrer le timer"
+          >
+            <Play size={14} />
+          </button>
+        )}
         {siteUrl && (
           <button
             className="row-action"

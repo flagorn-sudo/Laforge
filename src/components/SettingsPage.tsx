@@ -33,6 +33,7 @@ const DEFAULT_IDE_MONITORING: IDEMonitoringSettings = {
 const DEFAULT_BILLING: GlobalBillingSettings = {
   defaultRate: 75,
   defaultUnit: 'hour',
+  defaultCurrency: 'EUR',
 };
 
 interface SettingsPageProps {
@@ -106,7 +107,10 @@ export function SettingsPage({
   };
 
   const handleBillingChange = (partial: Partial<GlobalBillingSettings>) => {
-    setBilling((prev) => ({ ...prev, ...partial }));
+    const newBilling = { ...billing, ...partial };
+    setBilling(newBilling);
+    // Save directly to store for immediate persistence
+    useSettingsStore.getState().setBilling(partial);
   };
 
   const handleSave = async () => {

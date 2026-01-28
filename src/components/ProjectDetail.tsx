@@ -1232,10 +1232,14 @@ export function ProjectDetail({
                         {(() => {
                           const store = useTimeStore.getState();
                           const stats = store.getProjectStats(project.id);
-                          const activeSession = store.activeSession;
-                          const elapsed = activeSession?.projectId === project.id
-                            ? Math.floor((Date.now() - new Date(activeSession.startTime).getTime()) / 1000)
-                            : 0;
+                          const activeSession = store.activeSessions.find(s => s.projectId === project.id);
+                          let elapsed = 0;
+                          if (activeSession) {
+                            elapsed = activeSession.accumulatedTime;
+                            if (!activeSession.isPaused) {
+                              elapsed += Math.floor((Date.now() - new Date(activeSession.startTime).getTime()) / 1000);
+                            }
+                          }
                           const totalSeconds = stats.totalSeconds + elapsed;
                           const billingInfo = calculateBillableForProject(
                             totalSeconds,

@@ -10,6 +10,7 @@ mod transfer_resume;
 mod delta_sync;
 mod full_site_scraper;
 mod scrape_cache;
+mod ide_monitor;
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -178,6 +179,50 @@ fn open_in_finder(path: String) -> Result<(), String> {
         .arg(&path)
         .spawn()
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn open_in_editor(path: String, editor: String) -> Result<(), String> {
+    match editor.as_str() {
+        "pycharm" => {
+            // Try PyCharm CLI first (requires 'Create Command-line Launcher' in PyCharm)
+            let result = Command::new("pycharm")
+                .arg(&path)
+                .spawn();
+
+            if result.is_ok() {
+                return Ok(());
+            }
+
+            // Fallback: try using 'open' with PyCharm app bundle
+            Command::new("open")
+                .arg("-a")
+                .arg("PyCharm")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| format!("Failed to open PyCharm: {}", e))?;
+        }
+        "vscode" | "code" => {
+            Command::new("code")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| format!("Failed to open VS Code: {}", e))?;
+        }
+        "cursor" => {
+            Command::new("cursor")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| format!("Failed to open Cursor: {}", e))?;
+        }
+        _ => {
+            // Default: open with system default
+            Command::new("open")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
 }
 
@@ -2427,6 +2472,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open_in_finder,
+            open_in_editor,
             sftp_test_connection,
             sftp_list_files,
             sftp_get_diff,
@@ -2497,7 +2543,10 @@ fn main() {
             get_scrape_cache_stats,
             clear_scrape_cache,
             is_url_cached,
-            set_scrape_cache_ttl
+            set_scrape_cache_ttl,
+            // IDE monitor commands
+            ide_monitor::check_ide_for_project,
+            ide_monitor::get_open_projects_for_ide
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

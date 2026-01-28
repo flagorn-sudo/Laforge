@@ -4,6 +4,7 @@ import { ProjectList } from './components/ProjectList';
 import { ProjectDetail } from './components/ProjectDetail';
 import { SettingsPage } from './components/SettingsPage';
 import { CreateProject } from './components/CreateProject';
+import { ImportProjectModal } from './components/ImportProjectModal';
 import { Notifications } from './components/Notifications';
 import { AboutModal } from './components/AboutModal';
 import { ProjectFormData } from './components/ProjectForm';
@@ -14,6 +15,7 @@ import { projectService } from './services/projectService';
 import { scrapingService } from './services/scrapingService';
 import { geminiService } from './services/geminiService';
 import { configStore } from './services/configStore';
+import { migrationService } from './services/migrationService';
 import { Project } from './types';
 // TODO: Réactiver quand les mises à jour seront configurées
 // import { checkUpdate, installUpdate } from '@tauri-apps/api/updater';
@@ -41,17 +43,20 @@ export function App() {
   // Stores
   const {
     projects,
+    projectErrors,
     loading,
     selectedProjectId,
     fetchProjects,
     selectProject,
     createProject,
+    importProject,
     deleteProject,
     updateProjectLocally,
   } = useProjectStore();
 
   const {
     workspacePath,
+    registeredProjects,
     geminiApiKey,
     geminiModel,
     folderStructure,
@@ -86,12 +91,31 @@ export function App() {
     });
   }, [loadSettings]);
 
-  // Fetch projects on mount and when workspace changes
+  // Run data migrations and fetch projects on startup
   useEffect(() => {
-    if (isHydrated && workspacePath) {
-      fetchProjects(workspacePath);
+    if (isHydrated) {
+      // Run migrations (v1 -> v2: project registry)
+      migrationService.runMigrations().then((result) => {
+        if (result.migrationsRun > 0) {
+          console.log(`[App] Ran ${result.migrationsRun} migration(s)`);
+          // Reload settings after migration to get updated registeredProjects
+          loadSettings();
+        }
+      }).catch((err) => {
+        console.error('[App] Migration failed:', err);
+      });
     }
-  }, [isHydrated, workspacePath, fetchProjects]);
+  }, [isHydrated, loadSettings]);
+
+  // Fetch projects whenever registeredProjects changes (after migration or after settings load)
+  // Using JSON.stringify to avoid re-renders on array reference changes
+  const registeredProjectsKey = JSON.stringify(registeredProjects || []);
+  useEffect(() => {
+    if (isHydrated) {
+      fetchProjects();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHydrated, registeredProjectsKey]);
 
   // Initialize scheduler on mount
   useEffect(() => {
@@ -118,13 +142,11 @@ export function App() {
           break;
         case 'r':
           e.preventDefault();
-          if (workspacePath) {
-            fetchProjects(workspacePath);
-          }
+          fetchProjects();
           break;
       }
     }
-  }, [openModal, fetchProjects, workspacePath]);
+  }, [openModal, fetchProjects]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -187,7 +209,7 @@ export function App() {
     }, [openModal]),
     onRefresh: useCallback(() => {
       if (workspacePath) {
-        fetchProjects(workspacePath);
+        fetchProjects();
         addNotification('info', 'Liste des projets actualisée');
       }
     }, [workspacePath, fetchProjects, addNotification]),
@@ -255,7 +277,7 @@ export function App() {
             await projectService.saveProject(updatedProject);
 
             // Refresh projects list to show updated data
-            await fetchProjects(workspacePath);
+            await fetchProjects();
             addNotification('success', 'Profil client généré automatiquement');
           } catch (profileError) {
             console.error('Auto profile generation failed:', profileError);
@@ -268,11 +290,58 @@ export function App() {
     }
   };
 
+  const handleImportProject = async (folderPath: string, data: ProjectFormData, createMissingFolders: boolean) => {
+    try {
+      const project = await importProject(folderPath, data, createMissingFolders);
+      selectProject(project.id);
+      closeModal();
+      addNotification('success', `Projet "${project.name}" importé avec succès`);
+
+      // Auto-generate client profile if URL provided and Gemini API key available
+      if (data.currentSiteUrl && geminiApiKey) {
+        (async () => {
+          try {
+            addNotification('info', 'Génération du profil client en cours...');
+
+            const extractedTexts = await scrapingService.fetchAndExtractTexts(data.currentSiteUrl!);
+
+            const result = await geminiService.generateClientProfile(
+              project.name,
+              project.client,
+              data.currentSiteUrl!,
+              extractedTexts.allTexts,
+              [],
+              [],
+              geminiApiKey,
+              geminiModel
+            );
+
+            const updatedProject: Project = {
+              ...project,
+              clientDescription: result.description,
+              themeTags: result.themeTags,
+              themeTagsGeneratedAt: new Date().toISOString(),
+              updated: new Date().toISOString(),
+            };
+            await projectService.saveProject(updatedProject);
+
+            await fetchProjects();
+            addNotification('success', 'Profil client généré automatiquement');
+          } catch (profileError) {
+            console.error('Auto profile generation failed:', profileError);
+          }
+        })();
+      }
+    } catch (error) {
+      addNotification('error', error instanceof Error ? error.message : 'Erreur lors de l\'import');
+    }
+  };
+
   const handleSync = async (project: Project): Promise<void> => {
     try {
       const result = await syncService.sync(project);
       if (result.success) {
-        await fetchProjects(workspacePath);
+        await fetchProjects();
         addNotification(
           'success',
           `Synchronisation terminée: ${result.filesUploaded} fichiers envoyés`
@@ -311,7 +380,7 @@ export function App() {
         onHome={() => { selectProject(null); setCurrentView('projects'); }}
         onNewProject={() => openModal('createProject')}
         onSettings={() => setCurrentView('settings')}
-        onRefresh={() => fetchProjects(workspacePath)}
+        onRefresh={() => fetchProjects()}
         isHome={!selectedProjectId && currentView === 'projects'}
       />
 
@@ -331,7 +400,7 @@ export function App() {
               onUpdate={updateSettings}
               onSave={handleSaveSettings}
               onBack={() => setCurrentView('projects')}
-              onProjectsRefresh={() => fetchProjects(workspacePath)}
+              onProjectsRefresh={() => fetchProjects()}
               onNotification={addNotification}
             />
           ) : selectedProject ? (
@@ -351,10 +420,13 @@ export function App() {
           ) : (
             <ProjectList
               projects={projects}
+              projectErrors={projectErrors}
               loading={loading}
               onSelect={(p) => selectProject(p.id)}
               onNewProject={() => openModal('createProject')}
+              onImportProject={() => openModal('importProject')}
               onSync={handleSync}
+              onRefresh={fetchProjects}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
             />
@@ -372,6 +444,13 @@ export function App() {
 
       {activeModal === 'about' && (
         <AboutModal onClose={closeModal} />
+      )}
+
+      {activeModal === 'importProject' && (
+        <ImportProjectModal
+          onImport={handleImportProject}
+          onClose={closeModal}
+        />
       )}
 
       <Notifications />

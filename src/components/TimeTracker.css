@@ -82,14 +82,101 @@
   color: var(--text-secondary);
 }
 
-.timer-controls .btn-stop {
-  background: var(--error);
-  color: white;
-  border-color: var(--error);
+.timer-billing-live {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 4px;
 }
 
-.timer-controls .btn-stop:hover {
-  background: var(--error-hover, #c0392b);
+.timer-billing-live .billing-amount {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.timer-billing-live .billing-detail {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Timer controls with multiple buttons */
+.timer-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.timer-buttons .btn-pause {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+
+.timer-buttons .btn-pause:hover {
+  background: var(--bg-secondary);
+  border-color: var(--warning, #f59e0b);
+}
+
+/* Ensure danger button has white text */
+.timer-controls .btn-danger,
+.time-tracker .btn-danger {
+  background: var(--error, #ef4444) !important;
+  color: white !important;
+  border: none;
+}
+
+.timer-controls .btn-danger:hover,
+.time-tracker .btn-danger:hover {
+  background: var(--error-hover, #dc2626) !important;
+  filter: brightness(1.1);
+}
+
+/* Paused state */
+.time-tracker.paused {
+  border-color: var(--warning, #f59e0b);
+}
+
+.paused-badge {
+  font-size: 10px;
+  background: var(--warning, #f59e0b);
+  color: #000;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.timer-display .timer-value.paused {
+  color: var(--warning, #f59e0b);
+  animation: pulse-paused 2s ease-in-out infinite;
+}
+
+@keyframes pulse-paused {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* History button */
+.time-tracker-history-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  margin-top: 12px;
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.time-tracker-history-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--primary);
+  color: var(--text);
 }
 
 .time-tracker-stats {
@@ -163,6 +250,16 @@
   display: inline-flex;
 }
 
+.time-tracker-compact.paused {
+  /* Styling for paused state in compact mode */
+}
+
+.timer-toggle-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .timer-toggle {
   display: flex;
   align-items: center;
@@ -187,10 +284,24 @@
   background: var(--primary);
   color: white;
   border-color: var(--primary);
+  border-radius: 6px 0 0 6px;
 }
 
 .timer-toggle.active:hover {
   background: var(--primary-hover);
+}
+
+.timer-toggle.active.paused {
+  background: var(--warning, #f59e0b);
+  border-color: var(--warning, #f59e0b);
+}
+
+.timer-toggle.active.paused:hover {
+  filter: brightness(1.1);
+}
+
+.timer-toggle .timer-value.paused {
+  animation: pulse-paused 2s ease-in-out infinite;
 }
 
 .timer-toggle.disabled {
@@ -198,11 +309,34 @@
   cursor: not-allowed;
 }
 
-.timer-toggle .icon-stop {
-  animation: pulse 1s ease-in-out infinite;
+.timer-toggle .icon-pause {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.timer-stop-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  background: var(--error, #ef4444);
+  color: white;
+  border: none;
+  border-radius: 0 6px 6px 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.timer-stop-btn:hover {
+  background: var(--error-hover, #dc2626);
 }
 
 /* Mini version for header */
+.time-tracker-mini-container {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .time-tracker-mini {
   display: flex;
   align-items: center;
@@ -217,6 +351,10 @@
   transition: all 0.15s ease;
 }
 
+.time-tracker-mini-container.active .time-tracker-mini {
+  border-radius: 6px 0 0 6px;
+}
+
 .time-tracker-mini:hover:not(:disabled) {
   background: var(--bg-tertiary);
   border-color: var(--primary);
@@ -226,6 +364,11 @@
   background: var(--success);
   color: white;
   border-color: var(--success);
+}
+
+.time-tracker-mini.active.paused {
+  background: var(--warning, #f59e0b);
+  border-color: var(--warning, #f59e0b);
 }
 
 .time-tracker-mini.disabled {
@@ -244,6 +387,27 @@
 .time-tracker-mini .mini-timer {
   font-variant-numeric: tabular-nums;
   font-weight: 500;
+}
+
+.time-tracker-mini .mini-timer.paused {
+  animation: pulse-paused 2s ease-in-out infinite;
+}
+
+.mini-stop-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  background: var(--error, #ef4444);
+  color: white;
+  border: none;
+  border-radius: 0 6px 6px 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mini-stop-btn:hover {
+  background: var(--error-hover, #dc2626);
 }
 
 @keyframes pulse {
@@ -438,4 +602,152 @@
 
 .session-item .btn-delete:hover {
   background: var(--error-alpha, rgba(231, 76, 60, 0.1));
+}
+
+/* Add Manual Time */
+.add-manual-time {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.btn-add-time {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-add-time:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.manual-time-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}
+
+.manual-time-inputs {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.manual-amount-preview {
+  margin-left: auto;
+}
+
+.manual-amount-preview .amount-preview {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.time-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.time-input-group input {
+  width: 60px;
+  padding: 8px 10px;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.time-input-group input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.time-input-group input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.time-input-group span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.manual-notes-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.manual-notes-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.manual-notes-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.manual-time-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.manual-time-actions .btn-cancel {
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.manual-time-actions .btn-cancel:hover {
+  background: var(--bg-tertiary);
+  color: var(--text);
+}
+
+.manual-time-actions .btn-add {
+  padding: 6px 12px;
+  background: var(--primary);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.manual-time-actions .btn-add:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.manual-time-actions .btn-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

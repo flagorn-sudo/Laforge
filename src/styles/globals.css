@@ -302,15 +302,40 @@ body {
   color: white;
 }
 
+/* Active (running) - shows pause icon, green background */
 .card-action.timer-btn.active,
 .row-action.timer-btn.active {
-  background: var(--error);
+  background: var(--success);
   color: white;
 }
 
 .card-action.timer-btn.active:hover,
 .row-action.timer-btn.active:hover {
-  background: var(--error-hover, #c0392b);
+  background: var(--success-hover, #22c55e);
+}
+
+/* Paused state - amber background */
+.card-action.timer-btn.active.paused,
+.row-action.timer-btn.active.paused {
+  background: var(--warning, #f59e0b);
+  color: white;
+}
+
+.card-action.timer-btn.active.paused:hover,
+.row-action.timer-btn.active.paused:hover {
+  filter: brightness(1.1);
+}
+
+/* Stop button - red */
+.card-action.timer-btn.stop,
+.row-action.timer-btn.stop {
+  background: var(--error);
+  color: white;
+}
+
+.card-action.timer-btn.stop:hover,
+.row-action.timer-btn.stop:hover {
+  background: var(--error-hover, #dc2626);
 }
 
 .card-action.timer-btn:disabled,
@@ -357,8 +382,73 @@ body {
 
 .card-actions {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-top: 16px;
+}
+
+.card-actions-left,
+.card-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.timer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 68px;
+  flex-shrink: 0;
+}
+
+.timer-btn-sm {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 150ms;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.timer-btn-sm:hover {
+  background: var(--success);
+  color: white;
+}
+
+.timer-btn-sm.active {
+  background: var(--success);
+  color: white;
+}
+
+.timer-btn-sm.active:hover {
+  background: var(--success-hover, #22c55e);
+}
+
+.timer-btn-sm.active.paused {
+  background: var(--warning, #f59e0b);
+  color: white;
+}
+
+.timer-btn-sm.active.paused:hover {
+  filter: brightness(1.1);
+}
+
+.timer-btn-sm.stop {
+  background: var(--error);
+  color: white;
+}
+
+.timer-btn-sm.stop:hover {
+  background: var(--error-hover, #dc2626);
 }
 
 .card-action {
@@ -1535,16 +1625,14 @@ body {
   margin-bottom: 0;
 }
 
-/* Sync button (prominent version in card) */
+/* Sync button (icon only in card) */
 .card-action.sync-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
+  justify-content: center;
+  padding: 8px;
   background: var(--accent-blue);
   color: white;
-  font-weight: 500;
-  font-size: 13px;
 }
 
 .card-action.sync-btn:hover {
@@ -1554,10 +1642,6 @@ body {
 .card-action.sync-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.card-action.sync-btn span {
-  display: block;
 }
 
 /* Inline Smart Paste */
@@ -1850,28 +1934,16 @@ body {
   color: var(--text-secondary);
 }
 
-/* FTP indicator compact (card-actions) */
+/* FTP indicator compact (card-actions) - icon only */
 .ftp-indicator {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 4px;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
-  font-size: 11px;
   color: var(--text-secondary);
-}
-
-.ftp-indicator .ftp-label {
-  font-weight: 500;
-}
-
-.ftp-indicator .ftp-status-configured + .ftp-label {
-  color: var(--success);
-}
-
-.ftp-indicator .ftp-status-missing-password + .ftp-label {
-  color: var(--warning);
 }
 
 /* Locked folder styles */

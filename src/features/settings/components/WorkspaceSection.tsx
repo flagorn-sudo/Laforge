@@ -24,9 +24,10 @@ export function WorkspaceSection({
 
   return (
     <div className="settings-section">
-      <h3 className="settings-section-title">Dossier de travail</h3>
+      <h3 className="settings-section-title">Dossier par defaut</h3>
       <p className="settings-hint">
-        Le dossier contenant tous vos projets web.
+        Emplacement par defaut pour la creation de nouveaux projets.
+        Les projets importes peuvent etre situes n'importe ou sur le disque.
       </p>
       <div style={{ display: 'flex', gap: 12 }}>
         <input

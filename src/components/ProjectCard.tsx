@@ -1,9 +1,11 @@
-import { useState } from 'react';
-import { Folder, Globe, CheckCircle, XCircle, AlertCircle, RefreshCw, Loader, ChevronDown } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Folder, Globe, CheckCircle, XCircle, AlertCircle, RefreshCw, Loader, ChevronDown, Code2, Clock, Play, Pause, Square } from 'lucide-react';
 import { Project, PROJECT_STATUS_CONFIG, ProjectStatus } from '../types';
 import { projectService } from '../services/projectService';
 import { SyncStatusBadge } from './SyncStatusBadge';
 import { SyncStage, RetryState } from '../stores/syncStore';
+import { useTimeStore, formatDuration } from '../stores/timeStore';
+import { getProjectDisplayName, getProjectSubtitle } from '../utils/projectDisplay';
 
 interface SyncState {
   stage: SyncStage;
@@ -36,6 +38,37 @@ export function ProjectCard({
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const statusConfig = PROJECT_STATUS_CONFIG[project.status];
 
+  // Timer state
+  const activeSessions = useTimeStore((state) => state.activeSessions);
+  const startSession = useTimeStore((state) => state.startSession);
+  const stopSession = useTimeStore((state) => state.stopSession);
+  const pauseSession = useTimeStore((state) => state.pauseSession);
+  const resumeSession = useTimeStore((state) => state.resumeSession);
+  const activeSession = activeSessions.find(s => s.projectId === project.id) || null;
+  const isTimerActive = activeSession !== null;
+  const isPaused = activeSession?.isPaused ?? false;
+  const [elapsed, setElapsed] = useState(0);
+
+  // Update elapsed time
+  useEffect(() => {
+    if (!isTimerActive || !activeSession) {
+      setElapsed(0);
+      return;
+    }
+    const updateElapsed = () => {
+      if (activeSession.isPaused) {
+        setElapsed(activeSession.accumulatedTime);
+      } else {
+        const startTime = new Date(activeSession.startTime).getTime();
+        const runningTime = Math.floor((Date.now() - startTime) / 1000);
+        setElapsed(activeSession.accumulatedTime + runningTime);
+      }
+    };
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [isTimerActive, activeSession, activeSession?.isPaused, activeSession?.accumulatedTime, activeSession?.startTime]);
+
   // Use currentSite if available, fallback to production for legacy support
   const siteUrl = project.urls.currentSite || project.urls.production;
 
@@ -56,12 +89,20 @@ export function ProjectCard({
   };
 
   return (
-    <div className="project-card" onClick={onClick}>
+    <div className={`project-card ${isTimerActive ? 'timer-active' : ''}`} onClick={onClick}>
+      {/* Timer active indicator */}
+      {isTimerActive && (
+        <div className="timer-active-badge">
+          <div className="pulse-dot" />
+          <Clock size={12} />
+          <span>{formatDuration(elapsed)}</span>
+        </div>
+      )}
       <div className="card-header">
         <div className="card-title">
-          <h3>{project.client || project.name}</h3>
-          {project.client && project.client !== project.name && (
-            <span className="card-subtitle">{project.name}</span>
+          <h3>{getProjectDisplayName(project)}</h3>
+          {getProjectSubtitle(project) && (
+            <span className="card-subtitle">{getProjectSubtitle(project)}</span>
           )}
         </div>
         <div className="status-dropdown-container" onClick={(e) => e.stopPropagation()}>
@@ -99,64 +140,119 @@ export function ProjectCard({
       </div>
 
       <div className="card-actions">
-        <button
-          className="card-action"
-          onClick={(e) => {
-            e.stopPropagation();
-            projectService.openInFinder(project.path);
-          }}
-          title="Ouvrir dans Finder"
-        >
-          <Folder size={16} />
-        </button>
-        {siteUrl && (
+        <div className="card-actions-left">
           <button
             className="card-action"
             onClick={(e) => {
               e.stopPropagation();
-              projectService.openInBrowser(siteUrl);
+              projectService.openInFinder(project.path);
             }}
-            title="Ouvrir le site"
+            title="Ouvrir dans Finder"
           >
-            <Globe size={16} />
+            <Folder size={16} />
           </button>
-        )}
-        <span
-          className="ftp-indicator"
-          title={
-            project.sftp.configured
-              ? project.sftp.passwordAvailable
-                ? 'FTP configuré'
-                : 'Mot de passe FTP manquant'
-              : 'FTP non configuré'
-          }
-        >
-          {project.sftp.configured ? (
-            project.sftp.passwordAvailable ? (
-              <CheckCircle size={14} className="ftp-status-configured" />
-            ) : (
-              <AlertCircle size={14} className="ftp-status-missing-password" />
-            )
-          ) : (
-            <XCircle size={14} className="ftp-status-not-configured" />
-          )}
-          <span className="ftp-label">FTP</span>
-        </span>
-        {project.sftp.configured && project.sftp.passwordAvailable && onSync && (
           <button
-            className="card-action sync-btn"
-            onClick={handleSync}
-            disabled={syncing || isSyncActive}
-            title="Synchroniser avec le serveur"
+            className="card-action"
+            onClick={(e) => {
+              e.stopPropagation();
+              projectService.openInPyCharm(project.path, project.sourcePath);
+            }}
+            title="Ouvrir dans PyCharm"
           >
-            {(syncing || isSyncActive) ? (
-              <Loader size={16} className="spinner" />
-            ) : (
-              <RefreshCw size={16} />
-            )}
-            <span>Sync</span>
+            <Code2 size={16} />
           </button>
-        )}
+        </div>
+
+        <div className="timer-controls">
+          {isTimerActive ? (
+            <>
+              <button
+                className={`timer-btn-sm active ${isPaused ? 'paused' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isPaused) {
+                    resumeSession(project.id);
+                  } else {
+                    pauseSession(project.id);
+                  }
+                }}
+                title={isPaused ? 'Reprendre le timer' : 'Mettre en pause'}
+              >
+                {isPaused ? <Play size={12} /> : <Pause size={12} />}
+              </button>
+              <button
+                className="timer-btn-sm stop"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  stopSession(project.id);
+                }}
+                title="Arrêter le timer"
+              >
+                <Square size={12} />
+              </button>
+            </>
+          ) : (
+            <button
+              className="timer-btn-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                startSession(project.id);
+              }}
+              title="Démarrer le timer"
+            >
+              <Play size={12} />
+            </button>
+          )}
+        </div>
+
+        <div className="card-actions-right">
+          {siteUrl && (
+            <button
+              className="card-action"
+              onClick={(e) => {
+                e.stopPropagation();
+                projectService.openInBrowser(siteUrl);
+              }}
+              title="Ouvrir le site"
+            >
+              <Globe size={16} />
+            </button>
+          )}
+          <span
+            className="ftp-indicator"
+            title={
+              project.sftp.configured
+                ? project.sftp.passwordAvailable
+                  ? 'FTP configuré'
+                  : 'Mot de passe FTP manquant'
+                : 'FTP non configuré'
+            }
+          >
+            {project.sftp.configured ? (
+              project.sftp.passwordAvailable ? (
+                <CheckCircle size={14} className="ftp-status-configured" />
+              ) : (
+                <AlertCircle size={14} className="ftp-status-missing-password" />
+              )
+            ) : (
+              <XCircle size={14} className="ftp-status-not-configured" />
+            )}
+          </span>
+          {project.sftp.configured && project.sftp.passwordAvailable && onSync && (
+            <button
+              className="card-action sync-btn"
+              onClick={handleSync}
+              disabled={syncing || isSyncActive}
+              title="Synchroniser avec le serveur"
+            >
+              {(syncing || isSyncActive) ? (
+                <Loader size={16} className="spinner" />
+              ) : (
+                <RefreshCw size={16} />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Sync status badge */}

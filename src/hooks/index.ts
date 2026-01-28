@@ -56,3 +56,7 @@ export { useRetryCountdown } from './useRetryCountdown';
 // Sync events from Tauri backend
 export { useSyncEvents } from './useSyncEvents';
 export type { UseSyncEventsOptions, UseSyncEventsResult } from './useSyncEvents';
+
+// IDE Monitor for auto-timer
+export { useIDEMonitor } from './useIDEMonitor';
+export type { UseIDEMonitorOptions, UseIDEMonitorResult } from './useIDEMonitor';
